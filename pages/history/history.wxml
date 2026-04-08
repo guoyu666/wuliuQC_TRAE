@@ -1,0 +1,97 @@
+<view class="container">
+  <view class="export-bar">
+    <view class="export-btn" bindtap="showExportModal">
+      <text class="export-icon">📤</text>
+      <text>导出记录</text>
+    </view>
+  </view>
+
+  <view class="empty-state" wx:if="{{displayGroupedRecords.length === 0}}">
+    <view class="empty-icon">📋</view>
+    <view class="empty-text">暂无记录</view>
+    <view class="empty-hint">请在首页添加收发记录</view>
+  </view>
+
+  <view class="record-group" wx:for="{{displayGroupedRecords}}" wx:key="date">
+    <view class="date-header">
+      <view class="date-text">{{item.date}}</view>
+    </view>
+    <view class="summary-card card">
+      <view class="summary-row">
+        <view class="summary-item blue">
+          <view class="summary-label">发出</view>
+          <view class="summary-value">{{item.blueOut}}</view>
+        </view>
+        <view class="summary-item blue">
+          <view class="summary-label">收回</view>
+          <view class="summary-value">{{item.blueIn}}</view>
+        </view>
+        <view class="summary-item red">
+          <view class="summary-label">发出</view>
+          <view class="summary-value">{{item.redOut}}</view>
+        </view>
+        <view class="summary-item red">
+          <view class="summary-label">收回</view>
+          <view class="summary-value">{{item.redIn}}</view>
+        </view>
+      </view>
+    </view>
+    <view class="record-items">
+      <view class="record-item" wx:for="{{item.records}}" wx:for-item="record" wx:key="id">
+        <view class="record-time">{{record.createTime}}</view>
+        <view class="record-detail">
+          <text wx:if="{{record.blueOut > 0}}">蓝出:{{record.blueOut}} </text>
+          <text wx:if="{{record.blueIn > 0}}">蓝入:{{record.blueIn}} </text>
+          <text wx:if="{{record.redOut > 0}}">红出:{{record.redOut}} </text>
+          <text wx:if="{{record.redIn > 0}}">红入:{{record.redIn}}</text>
+        </view>
+        <view class="delete-btn" bindtap="deleteRecord" data-id="{{record.id}}" data-date="{{record.date}}">删除</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="loading-more" wx:if="{{hasMore}}">
+    <view class="loading-text">加载中...</view>
+  </view>
+
+  <view class="no-more" wx:if="{{!hasMore && displayGroupedRecords.length > 0}}">
+    <view class="no-more-text">没有更多了</view>
+  </view>
+
+  <view class="modal-mask" wx:if="{{showExportModal}}" bindtap="hideExportModal"></view>
+  <view class="modal-content" wx:if="{{showExportModal}}">
+    <view class="modal-header">导出历史记录</view>
+    <view class="modal-body">
+      <view class="date-range">
+        <view class="date-item">
+          <view class="date-label">开始日期</view>
+          <picker mode="date" value="{{startDate}}" start="2020-01-01" end="2099-12-31" bindchange="onStartDateChange">
+            <view class="date-picker">{{startDate || '请选择'}}</view>
+          </picker>
+        </view>
+        <view class="date-item">
+          <view class="date-label">结束日期</view>
+          <picker mode="date" value="{{endDate}}" start="2020-01-01" end="2099-12-31" bindchange="onEndDateChange">
+            <view class="date-picker">{{endDate || '请选择'}}</view>
+          </picker>
+        </view>
+      </view>
+      <view class="export-preview" wx:if="{{exportRecords.length > 0}}">
+        <view class="preview-title">共 {{exportRecords.length}} 条记录</view>
+        <view class="preview-stats">
+          <view class="stat-item">蓝出: {{exportStats.blueOut}}</view>
+          <view class="stat-item">蓝入: {{exportStats.blueIn}}</view>
+          <view class="stat-item">红出: {{exportStats.redOut}}</view>
+          <view class="stat-item">红入: {{exportStats.redIn}}</view>
+        </view>
+      </view>
+      <view class="export-preview" wx:else>
+        <view class="preview-title">请选择日期范围</view>
+      </view>
+    </view>
+    <view class="modal-footer">
+      <view class="modal-btn cancel" bindtap="hideExportModal">取消</view>
+      <view class="modal-btn confirm" bindtap="exportRecords">确认导出</view>
+    </view>
+  </view>
+</view>

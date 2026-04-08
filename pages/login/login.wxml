@@ -1,0 +1,35 @@
+<view class="container">
+  <view class="bg-decoration">
+    <view class="bg-circle bg-circle-1"></view>
+    <view class="bg-circle bg-circle-2"></view>
+    <view class="bg-circle bg-circle-3"></view>
+    <view class="bg-circle bg-circle-4"></view>
+  </view>
+
+  <view class="content">
+    <view class="logo-section">
+      <view class="logo-wrapper">
+        <view class="logo">📦</view>
+      </view>
+      <view class="app-name">框子收发</view>
+      <view class="app-desc">库房管理更轻松</view>
+    </view>
+
+    <view class="login-card">
+      <view class="welcome-text">欢迎使用</view>
+      <view class="welcome-hint">登录后享受更多服务</view>
+
+      <button class="wechat-login-btn" bindtap="loginWithWechat">
+        <image class="wechat-icon" src="/images/wechat.svg" />
+        微信一键登录
+      </button>
+    </view>
+  </view>
+
+  <view class="agreement">
+    登录即表示同意
+    <text class="link">《用户协议》</text>
+    和
+    <text class="link">《隐私政策》</text>
+  </view>
+</view>

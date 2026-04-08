@@ -1,0 +1,134 @@
+<view class="container">
+  <view class="date-selector">
+    <view class="date-picker-wrap">
+      <picker mode="date" value="{{selectedDate}}" start="2020-01-01" end="2099-12-31" bindchange="onDateChange">
+        <view class="date-display">
+          <text class="date-icon">📅</text>
+          <text class="date-text">{{selectedDate}}</text>
+          <text class="date-arrow">▼</text>
+        </view>
+      </picker>
+    </view>
+    <view class="today-btn" bindtap="goToToday">今天</view>
+  </view>
+
+  <view class="header-card card">
+    <view class="date-label">当日收发汇总</view>
+    <view class="summary-row">
+      <view class="summary-item blue">
+        <view class="summary-label">蓝色发出</view>
+        <view class="summary-value">{{todayBlueOut}}</view>
+      </view>
+      <view class="summary-item blue">
+        <view class="summary-label">蓝色收回</view>
+        <view class="summary-value">{{todayBlueIn}}</view>
+      </view>
+    </view>
+    <view class="summary-row">
+      <view class="summary-item red">
+        <view class="summary-label">红色发出</view>
+        <view class="summary-value">{{todayRedOut}}</view>
+      </view>
+      <view class="summary-item red">
+        <view class="summary-label">红色收回</view>
+        <view class="summary-value">{{todayRedIn}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="chart-card card">
+    <view class="chart-title">数据可视化</view>
+    <view class="chart-container">
+      <view class="chart-row">
+        <view class="chart-item">
+          <view class="bar-wrapper">
+            <view class="bar-value-top">{{todayBlueOut}}</view>
+            <view class="bar blue-out" style="height: {{barBlueOut}}rpx;"></view>
+            <view class="bar blue-in" style="height: {{barBlueIn}}rpx;"></view>
+            <view class="bar-value-bottom">{{todayBlueIn}}</view>
+          </view>
+          <view class="bar-label">蓝色框子</view>
+        </view>
+        <view class="chart-item">
+          <view class="bar-wrapper">
+            <view class="bar-value-top">{{todayRedOut}}</view>
+            <view class="bar red-out" style="height: {{barRedOut}}rpx;"></view>
+            <view class="bar red-in" style="height: {{barRedIn}}rpx;"></view>
+            <view class="bar-value-bottom">{{todayRedIn}}</view>
+          </view>
+          <view class="bar-label">红色框子</view>
+        </view>
+      </view>
+    </view>
+    <view class="chart-legend">
+      <view class="legend-item">
+        <view class="legend-color legend-blue-out"></view>
+        <text>蓝色发出</text>
+      </view>
+      <view class="legend-item">
+        <view class="legend-color legend-blue-in"></view>
+        <text>蓝色收回</text>
+      </view>
+      <view class="legend-item">
+        <view class="legend-color legend-red-out"></view>
+        <text>红色发出</text>
+      </view>
+      <view class="legend-item">
+        <view class="legend-color legend-red-in"></view>
+        <text>红色收回</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="input-card card">
+    <view class="section-title">本次记录</view>
+    
+    <view class="input-group">
+      <view class="input-label blue-label">蓝色框子</view>
+      <view class="input-row">
+        <view class="input-item">
+          <view class="input-name">发出</view>
+          <view class="stepper">
+            <view class="stepper-btn" bindtap="adjustValue" data-field="blueOut" data-delta="-1">-</view>
+            <input class="stepper-input" type="number" value="{{blueOut}}" bindinput="onBlueOutChange" />
+            <view class="stepper-btn" bindtap="adjustValue" data-field="blueOut" data-delta="1">+</view>
+          </view>
+        </view>
+        <view class="input-item">
+          <view class="input-name">收回</view>
+          <view class="stepper">
+            <view class="stepper-btn" bindtap="adjustValue" data-field="blueIn" data-delta="-1">-</view>
+            <input class="stepper-input" type="number" value="{{blueIn}}" bindinput="onBlueInChange" />
+            <view class="stepper-btn" bindtap="adjustValue" data-field="blueIn" data-delta="1">+</view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view class="input-group">
+      <view class="input-label red-label">红色框子</view>
+      <view class="input-row">
+        <view class="input-item">
+          <view class="input-name">发出</view>
+          <view class="stepper">
+            <view class="stepper-btn" bindtap="adjustValue" data-field="redOut" data-delta="-1">-</view>
+            <input class="stepper-input" type="number" value="{{redOut}}" bindinput="onRedOutChange" />
+            <view class="stepper-btn" bindtap="adjustValue" data-field="redOut" data-delta="1">+</view>
+          </view>
+        </view>
+        <view class="input-item">
+          <view class="input-name">收回</view>
+          <view class="stepper">
+            <view class="stepper-btn" bindtap="adjustValue" data-field="redIn" data-delta="-1">-</view>
+            <input class="stepper-input" type="number" value="{{redIn}}" bindinput="onRedInChange" />
+            <view class="stepper-btn" bindtap="adjustValue" data-field="redIn" data-delta="1">+</view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="btn-primary" bindtap="submitRecord">提交记录</view>
+
+  <view class="btn-secondary" bindtap="goToHistory" style="margin-top: 20rpx;">查看历史记录</view>
+</view>

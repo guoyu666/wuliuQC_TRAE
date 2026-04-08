@@ -1,0 +1,279 @@
+.date-selector {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20rpx;
+}
+
+.date-picker-wrap {
+  flex: 1;
+}
+
+.date-display {
+  display: flex;
+  align-items: center;
+  background-color: #FFFFFF;
+  padding: 20rpx 24rpx;
+  border-radius: 12rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.08);
+}
+
+.date-icon {
+  font-size: 32rpx;
+  margin-right: 12rpx;
+}
+
+.date-text {
+  font-size: 32rpx;
+  font-weight: 500;
+  color: #333333;
+}
+
+.date-arrow {
+  font-size: 20rpx;
+  color: #999999;
+  margin-left: 12rpx;
+}
+
+.today-btn {
+  background-color: #1976D2;
+  color: #FFFFFF;
+  padding: 20rpx 32rpx;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  margin-left: 20rpx;
+}
+
+.header-card {
+  text-align: center;
+  padding: 24rpx;
+}
+
+.date-label {
+  font-size: 24rpx;
+  color: #999999;
+  margin-bottom: 16rpx;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-around;
+  padding: 12rpx 0;
+}
+
+.summary-row:first-child {
+  border-bottom: 1rpx solid #EEEEEE;
+}
+
+.summary-item {
+  flex: 1;
+  text-align: center;
+  padding: 12rpx 0;
+}
+
+.summary-label {
+  font-size: 24rpx;
+  color: #666666;
+  margin-bottom: 8rpx;
+}
+
+.summary-value {
+  font-size: 40rpx;
+  font-weight: bold;
+}
+
+.summary-item.blue .summary-value {
+  color: #1976D2;
+}
+
+.summary-item.red .summary-value {
+  color: #D32F2F;
+}
+
+.chart-card {
+  padding: 24rpx;
+}
+
+.chart-title {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #333333;
+  margin-bottom: 24rpx;
+}
+
+.chart-container {
+  padding: 0 20rpx;
+}
+
+.chart-row {
+  display: flex;
+  justify-content: space-around;
+}
+
+.chart-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.bar-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 180rpx;
+}
+
+.bar-value-top {
+  font-size: 22rpx;
+  color: #333333;
+  font-weight: 500;
+}
+
+.bar-value-bottom {
+  font-size: 22rpx;
+  color: #333333;
+  font-weight: 500;
+  margin-top: 8rpx;
+}
+
+.bar {
+  width: 40rpx;
+  border-radius: 4rpx 4rpx 0 0;
+}
+
+.bar.blue-out {
+  background: linear-gradient(180deg, #1565C0 0%, #0D47A1 100%);
+}
+
+.bar.blue-in {
+  background: linear-gradient(180deg, #42A5F5 0%, #1E88E5 100%);
+}
+
+.bar.red-out {
+  background: linear-gradient(180deg, #C62828 0%, #B71C1C 100%);
+}
+
+.bar.red-in {
+  background: linear-gradient(180deg, #EF5350 0%, #E53935 100%);
+}
+
+.bar-label {
+  font-size: 24rpx;
+  color: #666666;
+  margin-top: 12rpx;
+}
+
+.chart-legend {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 24rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx solid #EEEEEE;
+  gap: 16rpx;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  font-size: 22rpx;
+  color: #666666;
+}
+
+.legend-color {
+  width: 20rpx;
+  height: 20rpx;
+  border-radius: 4rpx;
+  margin-right: 6rpx;
+}
+
+.legend-blue-out {
+  background-color: #0D47A1;
+}
+
+.legend-blue-in {
+  background-color: #42A5F5;
+}
+
+.legend-red-out {
+  background-color: #B71C1C;
+}
+
+.legend-red-in {
+  background-color: #EF5350;
+}
+
+.input-card {
+  padding: 24rpx;
+}
+
+.input-group {
+  margin-bottom: 32rpx;
+}
+
+.input-group:last-child {
+  margin-bottom: 0;
+}
+
+.input-label {
+  font-size: 30rpx;
+  font-weight: 500;
+  margin-bottom: 16rpx;
+  padding-left: 8rpx;
+}
+
+.blue-label {
+  color: #1976D2;
+}
+
+.red-label {
+  color: #D32F2F;
+}
+
+.input-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.input-item {
+  flex: 1;
+  padding: 16rpx;
+}
+
+.input-name {
+  font-size: 26rpx;
+  color: #666666;
+  margin-bottom: 12rpx;
+  text-align: center;
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #F5F5F5;
+  border-radius: 8rpx;
+  padding: 8rpx;
+}
+
+.stepper-btn {
+  width: 64rpx;
+  height: 64rpx;
+  line-height: 64rpx;
+  text-align: center;
+  font-size: 36rpx;
+  font-weight: bold;
+  color: #333333;
+  background-color: #FFFFFF;
+  border-radius: 8rpx;
+}
+
+.stepper-input {
+  width: 80rpx;
+  height: 64rpx;
+  text-align: center;
+  font-size: 32rpx;
+  margin: 0 8rpx;
+  background-color: #FFFFFF;
+  border-radius: 8rpx;
+}
