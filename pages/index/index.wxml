@@ -126,6 +126,11 @@
         </view>
       </view>
     </view>
+
+    <view class="input-group">
+      <view class="input-label">备注（选填）</view>
+      <textarea class="remark-input" placeholder="请输入备注信息..." value="{{remark}}" bindinput="onRemarkChange" maxlength="200"></textarea>
+    </view>
   </view>
 
   <view class="btn-primary" bindtap="submitRecord">提交记录</view>

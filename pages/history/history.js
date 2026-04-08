@@ -6,6 +6,9 @@ Page({
     groupedRecords: [],
     displayGroupedRecords: [],
     showExportModal: false,
+    showRemarkModal: false,
+    editRecordId: '',
+    editRemark: '',
     startDate: '',
     endDate: '',
     exportRecords: [],
@@ -109,6 +112,48 @@ Page({
     })
   },
 
+  editRemark(e) {
+    const { id, remark } = e.currentTarget.dataset
+    this.setData({
+      showRemarkModal: true,
+      editRecordId: id,
+      editRemark: remark || ''
+    })
+  },
+
+  hideRemarkModal() {
+    this.setData({
+      showRemarkModal: false,
+      editRecordId: '',
+      editRemark: ''
+    })
+  },
+
+  onEditRemarkChange(e) {
+    this.setData({ editRemark: e.detail.value })
+  },
+
+  saveRemark() {
+    const { editRecordId, editRemark } = this.data
+    
+    const records = wx.getStorageSync('records') || []
+    const newRecords = records.map(r => {
+      if (r.id === editRecordId) {
+        return { ...r, remark: editRemark.trim() }
+      }
+      return r
+    })
+    
+    wx.setStorageSync('records', newRecords)
+    this.hideRemarkModal()
+    this.loadRecords()
+    
+    wx.showToast({
+      title: '保存成功',
+      icon: 'success'
+    })
+  },
+
   showExportModal() {
     const records = this.data.records
     if (records.length === 0) {
@@ -204,6 +249,7 @@ Page({
         if (r.blueIn > 0) content += `蓝入:${r.blueIn} `
         if (r.redOut > 0) content += `红出:${r.redOut} `
         if (r.redIn > 0) content += `红入:${r.redIn} `
+        if (r.remark) content += `备注:${r.remark} `
         content += `\n`
       })
       content += `小计: 蓝出${group.blueOut} 蓝入${group.blueIn} 红出${group.redOut} 红入${group.redIn}\n\n`

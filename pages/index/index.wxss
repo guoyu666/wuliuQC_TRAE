@@ -277,3 +277,13 @@
   background-color: #FFFFFF;
   border-radius: 8rpx;
 }
+
+.remark-input {
+  width: 100%;
+  min-height: 120rpx;
+  padding: 16rpx;
+  font-size: 28rpx;
+  background-color: #F5F5F5;
+  border-radius: 8rpx;
+  box-sizing: border-box;
+}

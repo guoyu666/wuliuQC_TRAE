@@ -8,6 +8,7 @@ Page({
     blueIn: 0,
     redOut: 0,
     redIn: 0,
+    remark: '',
     todayBlueOut: 0,
     todayBlueIn: 0,
     todayRedOut: 0,
@@ -75,7 +76,8 @@ Page({
       blueOut: 0,
       blueIn: 0,
       redOut: 0,
-      redIn: 0
+      redIn: 0,
+      remark: ''
     })
     this.loadData()
   },
@@ -87,7 +89,8 @@ Page({
       blueOut: 0,
       blueIn: 0,
       redOut: 0,
-      redIn: 0
+      redIn: 0,
+      remark: ''
     })
     this.loadData()
   },
@@ -108,6 +111,10 @@ Page({
     this.setData({ redIn: parseInt(e.detail.value) || 0 })
   },
 
+  onRemarkChange(e) {
+    this.setData({ remark: e.detail.value })
+  },
+
   adjustValue(e) {
     const field = e.currentTarget.dataset.field
     const delta = parseInt(e.currentTarget.dataset.delta)
@@ -116,12 +123,39 @@ Page({
     this.setData({ [field]: newValue })
   },
 
-  submitRecord() {
-    const { blueOut, blueIn, redOut, redIn, selectedDate } = this.data
+  copyLastRemark() {
+    const { selectedDate } = this.data
+    const records = wx.getStorageSync('records') || []
+    const dayRecords = records.filter(r => r.date === selectedDate)
     
-    if (blueOut === 0 && blueIn === 0 && redOut === 0 && redIn === 0) {
+    if (dayRecords.length > 0) {
+      const lastRecord = dayRecords[dayRecords.length - 1]
+      if (lastRecord.remark) {
+        this.setData({ remark: lastRecord.remark })
+        wx.showToast({
+          title: '已复制上次备注',
+          icon: 'none'
+        })
+      } else {
+        wx.showToast({
+          title: '上次无备注',
+          icon: 'none'
+        })
+      }
+    } else {
       wx.showToast({
-        title: '请输入数量',
+        title: '无历史记录',
+        icon: 'none'
+      })
+    }
+  },
+
+  submitRecord() {
+    const { blueOut, blueIn, redOut, redIn, remark, selectedDate } = this.data
+    
+    if (blueOut === 0 && blueIn === 0 && redOut === 0 && redIn === 0 && !remark) {
+      wx.showToast({
+        title: '请输入数量或备注',
         icon: 'none'
       })
       return
@@ -134,6 +168,7 @@ Page({
       blueIn,
       redOut,
       redIn,
+      remark: remark.trim(),
       createTime: util.formatTime(new Date())
     }
 
@@ -145,7 +180,8 @@ Page({
       blueOut: 0,
       blueIn: 0,
       redOut: 0,
-      redIn: 0
+      redIn: 0,
+      remark: ''
     })
     
     this.loadData()

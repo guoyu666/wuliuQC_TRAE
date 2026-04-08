@@ -38,14 +38,20 @@
     </view>
     <view class="record-items">
       <view class="record-item" wx:for="{{item.records}}" wx:for-item="record" wx:key="id">
-        <view class="record-time">{{record.createTime}}</view>
-        <view class="record-detail">
-          <text wx:if="{{record.blueOut > 0}}">蓝出:{{record.blueOut}} </text>
-          <text wx:if="{{record.blueIn > 0}}">蓝入:{{record.blueIn}} </text>
-          <text wx:if="{{record.redOut > 0}}">红出:{{record.redOut}} </text>
-          <text wx:if="{{record.redIn > 0}}">红入:{{record.redIn}}</text>
+        <view class="record-content">
+          <view class="record-time">{{record.createTime}}</view>
+          <view class="record-detail">
+            <text wx:if="{{record.blueOut > 0}}">蓝出:{{record.blueOut}} </text>
+            <text wx:if="{{record.blueIn > 0}}">蓝入:{{record.blueIn}} </text>
+            <text wx:if="{{record.redOut > 0}}">红出:{{record.redOut}} </text>
+            <text wx:if="{{record.redIn > 0}}">红入:{{record.redIn}}</text>
+          </view>
+          <view class="record-remark" wx:if="{{record.remark}}">备注: {{record.remark}}</view>
         </view>
-        <view class="delete-btn" bindtap="deleteRecord" data-id="{{record.id}}" data-date="{{record.date}}">删除</view>
+        <view class="record-actions">
+          <view class="edit-btn" bindtap="editRemark" data-id="{{record.id}}" data-remark="{{record.remark}}">编辑</view>
+          <view class="delete-btn" bindtap="deleteRecord" data-id="{{record.id}}">删除</view>
+        </view>
       </view>
     </view>
   </view>
@@ -92,6 +98,18 @@
     <view class="modal-footer">
       <view class="modal-btn cancel" bindtap="hideExportModal">取消</view>
       <view class="modal-btn confirm" bindtap="exportRecords">确认导出</view>
+    </view>
+  </view>
+
+  <view class="modal-mask" wx:if="{{showRemarkModal}}" bindtap="hideRemarkModal"></view>
+  <view class="modal-content" wx:if="{{showRemarkModal}}">
+    <view class="modal-header">编辑备注</view>
+    <view class="modal-body">
+      <textarea class="remark-edit-input" placeholder="请输入备注..." value="{{editRemark}}" bindinput="onEditRemarkChange" maxlength="200"></textarea>
+    </view>
+    <view class="modal-footer">
+      <view class="modal-btn cancel" bindtap="hideRemarkModal">取消</view>
+      <view class="modal-btn confirm" bindtap="saveRemark">保存</view>
     </view>
   </view>
 </view>

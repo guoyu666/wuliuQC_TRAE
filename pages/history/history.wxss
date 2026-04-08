@@ -115,10 +115,36 @@
   color: #333333;
 }
 
+.record-remark {
+  font-size: 22rpx;
+  color: #999999;
+  margin-top: 6rpx;
+  padding: 6rpx 12rpx;
+  background-color: #F5F5F5;
+  border-radius: 4rpx;
+}
+
+.record-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8rpx;
+}
+
+.edit-btn {
+  font-size: 24rpx;
+  color: #1976D2;
+  padding: 8rpx 16rpx;
+}
+
 .delete-btn {
   font-size: 24rpx;
   color: #D32F2F;
   padding: 8rpx 16rpx;
+}
+
+.record-content {
+  flex: 1;
 }
 
 .loading-more,
@@ -243,4 +269,14 @@
 .modal-btn.confirm {
   color: #1976D2;
   font-weight: 500;
+}
+
+.remark-edit-input {
+  width: 100%;
+  min-height: 200rpx;
+  padding: 16rpx;
+  font-size: 28rpx;
+  background-color: #F5F5F5;
+  border-radius: 8rpx;
+  box-sizing: border-box;
 }
