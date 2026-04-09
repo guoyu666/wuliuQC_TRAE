@@ -1,0 +1,110 @@
+<view class="container">
+  <view class="tab-bar">
+    <view class="tab-item {{currentTab === 'month' ? 'active' : ''}}" bindtap="switchTab" data-tab="month">月度汇总</view>
+    <view class="tab-item {{currentTab === 'year' ? 'active' : ''}}" bindtap="switchTab" data-tab="year">年度汇总</view>
+  </view>
+
+  <view class="date-selector">
+    <view class="date-picker-wrap" wx:if="{{currentTab === 'month'}}">
+      <picker mode="date" value="{{selectedMonth}}" fields="month" start="2020-01" end="2099-12" bindchange="onMonthChange">
+        <view class="date-display">
+          <text class="date-icon">📅</text>
+          <text class="date-text">{{selectedMonth}}</text>
+          <text class="date-arrow">▼</text>
+        </view>
+      </picker>
+    </view>
+    <view class="date-picker-wrap" wx:if="{{currentTab === 'year'}}">
+      <picker mode="date" value="{{selectedYear}}" fields="year" start="2020" end="2099" bindchange="onYearChange">
+        <view class="date-display">
+          <text class="date-icon">📅</text>
+          <text class="date-text">{{selectedYear}}年</text>
+          <text class="date-arrow">▼</text>
+        </view>
+      </picker>
+    </view>
+    <view class="quick-btns">
+      <view class="quick-btn" bindtap="goToPrev">上{{currentTab === 'month' ? '月' : '年'}}</view>
+      <view class="quick-btn" bindtap="goToCurrent">{{currentTab === 'month' ? '本月' : '本年'}}</view>
+      <view class="quick-btn" bindtap="goToNext">下{{currentTab === 'month' ? '月' : '年'}}</view>
+    </view>
+  </view>
+
+  <view class="summary-card card">
+    <view class="summary-title">{{currentTab === 'month' ? selectedMonth : selectedYear}}年 收发汇总</view>
+    <view class="summary-grid">
+      <view class="summary-item">
+        <view class="summary-label">蓝色发出</view>
+        <view class="summary-value blue">{{totalBlueOut}}</view>
+      </view>
+      <view class="summary-item">
+        <view class="summary-label">蓝色收回</view>
+        <view class="summary-value blue">{{totalBlueIn}}</view>
+      </view>
+      <view class="summary-item">
+        <view class="summary-label">红色发出</view>
+        <view class="summary-value red">{{totalRedOut}}</view>
+      </view>
+      <view class="summary-item">
+        <view class="summary-label">红色收回</view>
+        <view class="summary-value red">{{totalRedIn}}</view>
+      </view>
+    </view>
+    <view class="summary-total">
+      <text>合计: 发出 {{totalOut}} | 收回 {{totalIn}}</text>
+    </view>
+  </view>
+
+  <view class="chart-card card">
+    <view class="chart-title">收发对比</view>
+    <view class="chart-container">
+      <view class="chart-bar-group">
+        <view class="chart-bar-item">
+          <view class="bar out" style="height: {{barOut}}rpx;"></view>
+          <view class="bar-label">发出</view>
+          <view class="bar-value">{{totalOut}}</view>
+        </view>
+        <view class="chart-bar-item">
+          <view class="bar in" style="height: {{barIn}}rpx;"></view>
+          <view class="bar-label">收回</view>
+          <view class="bar-value">{{totalIn}}</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="chart-card card" wx:if="{{currentTab === 'month'}}">
+    <view class="chart-title">每日趋势</view>
+    <view class="trend-list">
+      <view class="trend-item" wx:for="{{dailyData}}" wx:key="date">
+        <view class="trend-date">{{item.date}}</view>
+        <view class="trend-bars">
+          <view class="trend-bar blue-out" style="width: {{item.blueOut / maxDaily * 100}}%;"></view>
+        </view>
+        <view class="trend-num">蓝出:{{item.blueOut}} 蓝入:{{item.blueIn}} 红出:{{item.redOut}} 红入:{{item.redIn}}</view>
+      </view>
+    </view>
+    <view class="empty-tip" wx:if="{{dailyData.length === 0}}">
+      暂无数据
+    </view>
+  </view>
+
+  <view class="chart-card card" wx:if="{{currentTab === 'year'}}">
+    <view class="chart-title">月度趋势</view>
+    <view class="trend-list">
+      <view class="trend-item" wx:for="{{monthlyData}}" wx:key="month">
+        <view class="trend-date">{{item.month}}月</view>
+        <view class="trend-bars">
+          <view class="trend-bar blue-out" style="width: {{item.blueOut / maxMonthly * 100}}%;"></view>
+          <view class="trend-bar blue-in" style="width: {{item.blueIn / maxMonthly * 100}}%;"></view>
+        </view>
+        <view class="trend-num">蓝出:{{item.blueOut}} 蓝入:{{item.blueIn}}</view>
+      </view>
+    </view>
+    <view class="empty-tip" wx:if="{{monthlyData.length === 0}}">
+      暂无数据
+    </view>
+  </view>
+
+  <view class="btn-secondary" bindtap="goBack" style="margin-top: 20rpx;">返回</view>
+</view>

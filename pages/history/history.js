@@ -6,8 +6,13 @@ Page({
     groupedRecords: [],
     displayGroupedRecords: [],
     showExportModal: false,
+    showDataModal: false,
     showRemarkModal: false,
     editRecordId: '',
+    editBlueOut: 0,
+    editBlueIn: 0,
+    editRedOut: 0,
+    editRedIn: 0,
     editRemark: '',
     startDate: '',
     endDate: '',
@@ -109,6 +114,85 @@ Page({
     
     return Object.values(groups).sort((a, b) => {
       return new Date(b.date) - new Date(a.date)
+    })
+  },
+
+  editData(e) {
+    const { id } = e.currentTarget.dataset
+    const records = wx.getStorageSync('records') || []
+    const record = records.find(r => r.id === id)
+    
+    if (record) {
+      this.setData({
+        showDataModal: true,
+        editRecordId: id,
+        editBlueOut: record.blueOut || 0,
+        editBlueIn: record.blueIn || 0,
+        editRedOut: record.redOut || 0,
+        editRedIn: record.redIn || 0
+      })
+    }
+  },
+
+  hideDataModal() {
+    this.setData({
+      showDataModal: false,
+      editRecordId: '',
+      editBlueOut: 0,
+      editBlueIn: 0,
+      editRedOut: 0,
+      editRedIn: 0
+    })
+  },
+
+  onEditBlueOutChange(e) {
+    this.setData({ editBlueOut: parseInt(e.detail.value) || 0 })
+  },
+
+  onEditBlueInChange(e) {
+    this.setData({ editBlueIn: parseInt(e.detail.value) || 0 })
+  },
+
+  onEditRedOutChange(e) {
+    this.setData({ editRedOut: parseInt(e.detail.value) || 0 })
+  },
+
+  onEditRedInChange(e) {
+    this.setData({ editRedIn: parseInt(e.detail.value) || 0 })
+  },
+
+  adjustEditValue(e) {
+    const field = e.currentTarget.dataset.field
+    const delta = parseInt(e.currentTarget.dataset.delta)
+    const currentValue = this.data[field]
+    const newValue = Math.max(0, currentValue + delta)
+    this.setData({ [field]: newValue })
+  },
+
+  saveData() {
+    const { editRecordId, editBlueOut, editBlueIn, editRedOut, editRedIn } = this.data
+    
+    const records = wx.getStorageSync('records') || []
+    const newRecords = records.map(r => {
+      if (r.id === editRecordId) {
+        return { 
+          ...r, 
+          blueOut: editBlueOut, 
+          blueIn: editBlueIn, 
+          redOut: editRedOut, 
+          redIn: editRedIn 
+        }
+      }
+      return r
+    })
+    
+    wx.setStorageSync('records', newRecords)
+    this.hideDataModal()
+    this.loadRecords()
+    
+    wx.showToast({
+      title: '保存成功',
+      icon: 'success'
     })
   },
 

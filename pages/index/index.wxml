@@ -9,7 +9,13 @@
         </view>
       </picker>
     </view>
-    <view class="today-btn" bindtap="goToToday">今天</view>
+  </view>
+
+  <view class="quick-date">
+    <view class="quick-date-item {{quickType === 'today' ? 'active' : ''}}" bindtap="goToToday">今天</view>
+    <view class="quick-date-item {{quickType === 'yesterday' ? 'active' : ''}}" bindtap="goToYesterday">昨天</view>
+    <view class="quick-date-item {{quickType === 'lastWeek' ? 'active' : ''}}" bindtap="goToLastWeek">上周</view>
+    <view class="quick-date-item {{quickType === 'monthStart' ? 'active' : ''}}" bindtap="goToMonthStart">月初</view>
   </view>
 
   <view class="header-card card">
@@ -135,5 +141,8 @@
 
   <view class="btn-primary" bindtap="submitRecord">提交记录</view>
 
-  <view class="btn-secondary" bindtap="goToHistory" style="margin-top: 20rpx;">查看历史记录</view>
+  <view class="btn-row">
+    <view class="btn-secondary" bindtap="goToStatistics">统计报表</view>
+    <view class="btn-secondary" bindtap="goToHistory">历史记录</view>
+  </view>
 </view>

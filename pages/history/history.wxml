@@ -49,7 +49,8 @@
           <view class="record-remark" wx:if="{{record.remark}}">备注: {{record.remark}}</view>
         </view>
         <view class="record-actions">
-          <view class="edit-btn" bindtap="editRemark" data-id="{{record.id}}" data-remark="{{record.remark}}">编辑</view>
+          <view class="edit-btn" bindtap="editData" data-id="{{record.id}}">编辑数据</view>
+          <view class="remark-btn" bindtap="editRemark" data-id="{{record.id}}" data-remark="{{record.remark}}">备注</view>
           <view class="delete-btn" bindtap="deleteRecord" data-id="{{record.id}}">删除</view>
         </view>
       </view>
@@ -98,6 +99,59 @@
     <view class="modal-footer">
       <view class="modal-btn cancel" bindtap="hideExportModal">取消</view>
       <view class="modal-btn confirm" bindtap="exportRecords">确认导出</view>
+    </view>
+  </view>
+
+  <view class="modal-mask" wx:if="{{showDataModal}}" bindtap="hideDataModal"></view>
+  <view class="modal-content" wx:if="{{showDataModal}}">
+    <view class="modal-header">编辑数据</view>
+    <view class="modal-body">
+      <view class="edit-group">
+        <view class="edit-label blue">蓝色框子</view>
+        <view class="edit-row">
+          <view class="edit-item">
+            <view class="edit-name">发出</view>
+            <view class="edit-stepper">
+              <view class="stepper-btn" bindtap="adjustEditValue" data-field="editBlueOut" data-delta="-1">-</view>
+              <input class="stepper-input" type="number" value="{{editBlueOut}}" bindinput="onEditBlueOutChange" />
+              <view class="stepper-btn" bindtap="adjustEditValue" data-field="editBlueOut" data-delta="1">+</view>
+            </view>
+          </view>
+          <view class="edit-item">
+            <view class="edit-name">收回</view>
+            <view class="edit-stepper">
+              <view class="stepper-btn" bindtap="adjustEditValue" data-field="editBlueIn" data-delta="-1">-</view>
+              <input class="stepper-input" type="number" value="{{editBlueIn}}" bindinput="onEditBlueInChange" />
+              <view class="stepper-btn" bindtap="adjustEditValue" data-field="editBlueIn" data-delta="1">+</view>
+            </view>
+          </view>
+        </view>
+      </view>
+      <view class="edit-group">
+        <view class="edit-label red">红色框子</view>
+        <view class="edit-row">
+          <view class="edit-item">
+            <view class="edit-name">发出</view>
+            <view class="edit-stepper">
+              <view class="stepper-btn" bindtap="adjustEditValue" data-field="editRedOut" data-delta="-1">-</view>
+              <input class="stepper-input" type="number" value="{{editRedOut}}" bindinput="onEditRedOutChange" />
+              <view class="stepper-btn" bindtap="adjustEditValue" data-field="editRedOut" data-delta="1">+</view>
+            </view>
+          </view>
+          <view class="edit-item">
+            <view class="edit-name">收回</view>
+            <view class="edit-stepper">
+              <view class="stepper-btn" bindtap="adjustEditValue" data-field="editRedIn" data-delta="-1">-</view>
+              <input class="stepper-input" type="number" value="{{editRedIn}}" bindinput="onEditRedInChange" />
+              <view class="stepper-btn" bindtap="adjustEditValue" data-field="editRedIn" data-delta="1">+</view>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+    <view class="modal-footer">
+      <view class="modal-btn cancel" bindtap="hideDataModal">取消</view>
+      <view class="modal-btn confirm" bindtap="saveData">保存</view>
     </view>
   </view>
 

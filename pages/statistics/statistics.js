@@ -1,0 +1,201 @@
+const util = require('../../utils/util.js')
+
+Page({
+  data: {
+    currentTab: 'month',
+    selectedMonth: '',
+    selectedYear: '',
+    totalBlueOut: 0,
+    totalBlueIn: 0,
+    totalRedOut: 0,
+    totalRedIn: 0,
+    totalOut: 0,
+    totalIn: 0,
+    barOut: 4,
+    barIn: 4,
+    dailyData: [],
+    monthlyData: [],
+    maxDaily: 1,
+    maxMonthly: 1
+  },
+
+  onLoad() {
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    
+    this.setData({
+      selectedMonth: `${year}-${month}`,
+      selectedYear: year.toString()
+    })
+    
+    this.loadData()
+  },
+
+  switchTab(e) {
+    const tab = e.currentTarget.dataset.tab
+    this.setData({ currentTab: tab })
+    this.loadData()
+  },
+
+  onMonthChange(e) {
+    this.setData({ selectedMonth: e.detail.value })
+    this.loadData()
+  },
+
+  onYearChange(e) {
+    this.setData({ selectedYear: e.detail.value })
+    this.loadData()
+  },
+
+  goToPrev() {
+    if (this.data.currentTab === 'month') {
+      const [year, month] = this.data.selectedMonth.split('-')
+      const date = new Date(parseInt(year), parseInt(month) - 2, 1)
+      const newYear = date.getFullYear()
+      const newMonth = String(date.getMonth() + 1).padStart(2, '0')
+      this.setData({ selectedMonth: `${newYear}-${newMonth}` })
+    } else {
+      const newYear = parseInt(this.data.selectedYear) - 1
+      this.setData({ selectedYear: newYear.toString() })
+    }
+    this.loadData()
+  },
+
+  goToCurrent() {
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    
+    if (this.data.currentTab === 'month') {
+      this.setData({ selectedMonth: `${year}-${month}` })
+    } else {
+      this.setData({ selectedYear: year.toString() })
+    }
+    this.loadData()
+  },
+
+  goToNext() {
+    if (this.data.currentTab === 'month') {
+      const [year, month] = this.data.selectedMonth.split('-')
+      const date = new Date(parseInt(year), parseInt(month), 1)
+      const newYear = date.getFullYear()
+      const newMonth = String(date.getMonth() + 1).padStart(2, '0')
+      this.setData({ selectedMonth: `${newYear}-${newMonth}` })
+    } else {
+      const newYear = parseInt(this.data.selectedYear) + 1
+      this.setData({ selectedYear: newYear.toString() })
+    }
+    this.loadData()
+  },
+
+  loadData() {
+    const records = wx.getStorageSync('records') || []
+    
+    if (this.data.currentTab === 'month') {
+      this.loadMonthData(records)
+    } else {
+      this.loadYearData(records)
+    }
+  },
+
+  loadMonthData(records) {
+    const { selectedMonth } = this.data
+    const [year, month] = selectedMonth.split('-')
+    
+    const monthRecords = records.filter(r => {
+      return r.date.startsWith(selectedMonth)
+    })
+    
+    let totalBlueOut = 0, totalBlueIn = 0, totalRedOut = 0, totalRedIn = 0
+    const dailyMap = {}
+    
+    monthRecords.forEach(r => {
+      totalBlueOut += r.blueOut || 0
+      totalBlueIn += r.blueIn || 0
+      totalRedOut += r.redOut || 0
+      totalRedIn += r.redIn || 0
+      
+      if (!dailyMap[r.date]) {
+        dailyMap[r.date] = { date: r.date, blueOut: 0, blueIn: 0, redOut: 0, redIn: 0 }
+      }
+      dailyMap[r.date].blueOut += r.blueOut || 0
+      dailyMap[r.date].blueIn += r.blueIn || 0
+      dailyMap[r.date].redOut += r.redOut || 0
+      dailyMap[r.date].redIn += r.redIn || 0
+    })
+    
+    const dailyData = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date))
+    const maxDaily = Math.max(...dailyData.map(d => d.blueOut + d.blueIn + d.redOut + d.redIn), 1)
+    
+    const totalOut = totalBlueOut + totalRedOut
+    const totalIn = totalBlueIn + totalRedIn
+    const maxValue = Math.max(totalOut, totalIn, 1)
+    const maxHeight = 160
+    
+    this.setData({
+      totalBlueOut,
+      totalBlueIn,
+      totalRedOut,
+      totalRedIn,
+      totalOut,
+      totalIn,
+      barOut: Math.max(4, (totalOut / maxValue) * maxHeight),
+      barIn: Math.max(4, (totalIn / maxValue) * maxHeight),
+      dailyData,
+      maxDaily
+    })
+  },
+
+  loadYearData(records) {
+    const { selectedYear } = this.data
+    
+    const yearRecords = records.filter(r => {
+      return r.date.startsWith(selectedYear)
+    })
+    
+    let totalBlueOut = 0, totalBlueIn = 0, totalRedOut = 0, totalRedIn = 0
+    const monthlyMap = {}
+    
+    yearRecords.forEach(r => {
+      totalBlueOut += r.blueOut || 0
+      totalBlueIn += r.blueIn || 0
+      totalRedOut += r.redOut || 0
+      totalRedIn += r.redIn || 0
+      
+      const month = r.date.substring(5, 7)
+      if (!monthlyMap[month]) {
+        monthlyMap[month] = { month: parseInt(month), blueOut: 0, blueIn: 0, redOut: 0, redIn: 0 }
+      }
+      monthlyMap[month].blueOut += r.blueOut || 0
+      monthlyMap[month].blueIn += r.blueIn || 0
+      monthlyMap[month].redOut += r.redOut || 0
+      monthlyMap[month].redIn += r.redIn || 0
+    })
+    
+    const monthlyData = Object.values(monthlyMap).sort((a, b) => a.month - b.month)
+    const maxMonthly = Math.max(...monthlyData.map(d => d.blueOut + d.blueIn + d.redOut + d.redIn), 1)
+    
+    const totalOut = totalBlueOut + totalRedOut
+    const totalIn = totalBlueIn + totalRedIn
+    const maxValue = Math.max(totalOut, totalIn, 1)
+    const maxHeight = 160
+    
+    this.setData({
+      totalBlueOut,
+      totalBlueIn,
+      totalRedOut,
+      totalRedIn,
+      totalOut,
+      totalIn,
+      barOut: Math.max(4, (totalOut / maxValue) * maxHeight),
+      barIn: Math.max(4, (totalIn / maxValue) * maxHeight),
+      monthlyData,
+      maxMonthly
+    })
+  },
+
+  goBack() {
+    wx.navigateBack()
+  }
+})

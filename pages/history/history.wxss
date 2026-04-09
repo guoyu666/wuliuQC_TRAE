@@ -128,7 +128,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 8rpx;
+  gap: 4rpx;
 }
 
 .edit-btn {
@@ -269,6 +269,82 @@
 .modal-btn.confirm {
   color: #1976D2;
   font-weight: 500;
+}
+
+.edit-group {
+  margin-bottom: 32rpx;
+}
+
+.edit-group:last-child {
+  margin-bottom: 0;
+}
+
+.edit-label {
+  font-size: 28rpx;
+  font-weight: 500;
+  margin-bottom: 16rpx;
+}
+
+.edit-label.blue {
+  color: #1976D2;
+}
+
+.edit-label.red {
+  color: #D32F2F;
+}
+
+.edit-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.edit-item {
+  flex: 1;
+  padding: 0 8rpx;
+}
+
+.edit-name {
+  font-size: 24rpx;
+  color: #666666;
+  text-align: center;
+  margin-bottom: 12rpx;
+}
+
+.edit-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #F5F5F5;
+  border-radius: 8rpx;
+  padding: 8rpx;
+}
+
+.edit-stepper .stepper-btn {
+  width: 56rpx;
+  height: 56rpx;
+  line-height: 56rpx;
+  text-align: center;
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #333333;
+  background-color: #FFFFFF;
+  border-radius: 6rpx;
+}
+
+.edit-stepper .stepper-input {
+  width: 70rpx;
+  height: 56rpx;
+  text-align: center;
+  font-size: 28rpx;
+  margin: 0 6rpx;
+  background-color: #FFFFFF;
+  border-radius: 6rpx;
+}
+
+.remark-btn {
+  font-size: 24rpx;
+  color: #FF9800;
+  padding: 8rpx 16rpx;
 }
 
 .remark-edit-input {

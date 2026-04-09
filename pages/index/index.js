@@ -4,6 +4,8 @@ Page({
   data: {
     selectedDate: '',
     today: '',
+    monthStart: '',
+    quickType: 'today',
     blueOut: 0,
     blueIn: 0,
     redOut: 0,
@@ -20,10 +22,14 @@ Page({
   },
 
   onLoad() {
-    const today = util.formatDate(new Date())
+    const today = new Date()
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
+    
     this.setData({
-      selectedDate: today,
-      today: today
+      selectedDate: util.formatDate(today),
+      today: util.formatDate(today),
+      monthStart: util.formatDate(monthStart),
+      quickType: 'today'
     })
     this.loadData()
   },
@@ -69,6 +75,31 @@ Page({
     })
   },
 
+  updateQuickType() {
+    const { selectedDate, today, monthStart } = this.data
+    
+    if (selectedDate === today) {
+      this.setData({ quickType: 'today' })
+    } else {
+      const selected = new Date(selectedDate)
+      const todayDate = new Date(today)
+      const diffDays = Math.floor((todayDate - selected) / (1000 * 60 * 60 * 24))
+      
+      if (diffDays === 1) {
+        this.setData({ quickType: 'yesterday' })
+      } else if (diffDays >= 7 && diffDays <= 13) {
+        this.setData({ quickType: 'lastWeek' })
+      } else {
+        const currentMonth = selectedDate.substring(0, 7)
+        if (selectedDate === currentMonth + '-01') {
+          this.setData({ quickType: 'monthStart' })
+        } else {
+          this.setData({ quickType: '' })
+        }
+      }
+    }
+  },
+
   onDateChange(e) {
     const selectedDate = e.detail.value
     this.setData({
@@ -78,14 +109,67 @@ Page({
       redOut: 0,
       redIn: 0,
       remark: ''
+    }, () => {
+      this.updateQuickType()
+      this.loadData()
+    })
+  },
+
+  goToToday() {
+    this.setData({
+      selectedDate: this.data.today,
+      quickType: 'today',
+      blueOut: 0,
+      blueIn: 0,
+      redOut: 0,
+      redIn: 0,
+      remark: ''
     })
     this.loadData()
   },
 
-  goToToday() {
-    const today = util.formatDate(new Date())
+  goToYesterday() {
+    const currentDate = new Date(this.data.selectedDate)
+    currentDate.setDate(currentDate.getDate() - 1)
+    const yesterdayDate = util.formatDate(currentDate)
+    
     this.setData({
-      selectedDate: today,
+      selectedDate: yesterdayDate,
+      quickType: 'yesterday',
+      blueOut: 0,
+      blueIn: 0,
+      redOut: 0,
+      redIn: 0,
+      remark: ''
+    })
+    this.loadData()
+  },
+
+  goToLastWeek() {
+    const currentDate = new Date(this.data.selectedDate)
+    currentDate.setDate(currentDate.getDate() - 7)
+    const lastWeekDate = util.formatDate(currentDate)
+    
+    this.setData({
+      selectedDate: lastWeekDate,
+      quickType: 'lastWeek',
+      blueOut: 0,
+      blueIn: 0,
+      redOut: 0,
+      redIn: 0,
+      remark: ''
+    })
+    this.loadData()
+  },
+
+  goToMonthStart() {
+    const currentDate = new Date(this.data.selectedDate)
+    const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
+    const monthStartDate = util.formatDate(monthStart)
+    
+    this.setData({
+      selectedDate: monthStartDate,
+      quickType: 'monthStart',
       blueOut: 0,
       blueIn: 0,
       redOut: 0,
@@ -195,6 +279,12 @@ Page({
   goToHistory() {
     wx.navigateTo({
       url: '/pages/history/history'
+    })
+  },
+
+  goToStatistics() {
+    wx.navigateTo({
+      url: '/pages/statistics/statistics'
     })
   },
 
