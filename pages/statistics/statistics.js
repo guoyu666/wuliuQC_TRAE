@@ -11,12 +11,16 @@ Page({
     totalRedIn: 0,
     totalOut: 0,
     totalIn: 0,
-    barOut: 4,
-    barIn: 4,
+    barBlueOut: 0,
+    barBlueIn: 0,
+    barRedOut: 0,
+    barRedIn: 0,
     dailyData: [],
     monthlyData: [],
     maxDaily: 1,
-    maxMonthly: 1
+    maxMonthly: 1,
+    animationData: null,
+    trendAnimationData: null
   },
 
   onLoad() {
@@ -34,59 +38,114 @@ Page({
 
   switchTab(e) {
     const tab = e.currentTarget.dataset.tab
-    this.setData({ currentTab: tab })
-    this.loadData()
+    this.setData({ currentTab: tab }, () => {
+      this.animateBars()
+      setTimeout(() => {
+        this.loadData()
+        this.animateBarsIn()
+      }, 400)
+    })
   },
 
   onMonthChange(e) {
-    this.setData({ selectedMonth: e.detail.value })
-    this.loadData()
+    this.animateBars()
+    setTimeout(() => {
+      this.setData({ selectedMonth: e.detail.value }, () => {
+        this.loadData()
+        this.animateBarsIn()
+      })
+    }, 400)
   },
 
   onYearChange(e) {
-    this.setData({ selectedYear: e.detail.value })
-    this.loadData()
+    this.animateBars()
+    setTimeout(() => {
+      this.setData({ selectedYear: e.detail.value }, () => {
+        this.loadData()
+        this.animateBarsIn()
+      })
+    }, 400)
   },
 
   goToPrev() {
-    if (this.data.currentTab === 'month') {
-      const [year, month] = this.data.selectedMonth.split('-')
-      const date = new Date(parseInt(year), parseInt(month) - 2, 1)
-      const newYear = date.getFullYear()
-      const newMonth = String(date.getMonth() + 1).padStart(2, '0')
-      this.setData({ selectedMonth: `${newYear}-${newMonth}` })
-    } else {
-      const newYear = parseInt(this.data.selectedYear) - 1
-      this.setData({ selectedYear: newYear.toString() })
-    }
-    this.loadData()
+    this.animateBars()
+    setTimeout(() => {
+      if (this.data.currentTab === 'month') {
+        const [year, month] = this.data.selectedMonth.split('-')
+        const date = new Date(parseInt(year), parseInt(month) - 2, 1)
+        const newYear = date.getFullYear()
+        const newMonth = String(date.getMonth() + 1).padStart(2, '0')
+        this.setData({ selectedMonth: `${newYear}-${newMonth}` })
+      } else {
+        const newYear = parseInt(this.data.selectedYear) - 1
+        this.setData({ selectedYear: newYear.toString() })
+      }
+      this.loadData()
+      this.animateBarsIn()
+    }, 400)
   },
 
   goToCurrent() {
-    const now = new Date()
-    const year = now.getFullYear()
-    const month = String(now.getMonth() + 1).padStart(2, '0')
-    
-    if (this.data.currentTab === 'month') {
-      this.setData({ selectedMonth: `${year}-${month}` })
-    } else {
-      this.setData({ selectedYear: year.toString() })
-    }
-    this.loadData()
+    this.animateBars()
+    setTimeout(() => {
+      const now = new Date()
+      const year = now.getFullYear()
+      const month = String(now.getMonth() + 1).padStart(2, '0')
+      
+      if (this.data.currentTab === 'month') {
+        this.setData({ selectedMonth: `${year}-${month}` })
+      } else {
+        this.setData({ selectedYear: year.toString() })
+      }
+      this.loadData()
+      this.animateBarsIn()
+    }, 400)
   },
 
   goToNext() {
-    if (this.data.currentTab === 'month') {
-      const [year, month] = this.data.selectedMonth.split('-')
-      const date = new Date(parseInt(year), parseInt(month), 1)
-      const newYear = date.getFullYear()
-      const newMonth = String(date.getMonth() + 1).padStart(2, '0')
-      this.setData({ selectedMonth: `${newYear}-${newMonth}` })
-    } else {
-      const newYear = parseInt(this.data.selectedYear) + 1
-      this.setData({ selectedYear: newYear.toString() })
-    }
-    this.loadData()
+    this.animateBars()
+    setTimeout(() => {
+      if (this.data.currentTab === 'month') {
+        const [year, month] = this.data.selectedMonth.split('-')
+        const date = new Date(parseInt(year), parseInt(month), 1)
+        const newYear = date.getFullYear()
+        const newMonth = String(date.getMonth() + 1).padStart(2, '0')
+        this.setData({ selectedMonth: `${newYear}-${newMonth}` })
+      } else {
+        const newYear = parseInt(this.data.selectedYear) + 1
+        this.setData({ selectedYear: newYear.toString() })
+      }
+      this.loadData()
+      this.animateBarsIn()
+    }, 400)
+  },
+
+  animateBars() {
+    const animation = wx.createAnimation({
+      duration: 400,
+      timingFunction: 'ease-out',
+      delay: 0
+    })
+    
+    animation.opacity(0).translateY(15).step()
+    
+    this.setData({
+      animationData: animation.export()
+    })
+  },
+
+  animateBarsIn() {
+    const animation = wx.createAnimation({
+      duration: 500,
+      timingFunction: 'ease-out',
+      delay: 0
+    })
+    
+    animation.opacity(1).translateY(0).step()
+    
+    this.setData({
+      animationData: animation.export()
+    })
   },
 
   loadData() {
@@ -101,7 +160,6 @@ Page({
 
   loadMonthData(records) {
     const { selectedMonth } = this.data
-    const [year, month] = selectedMonth.split('-')
     
     const monthRecords = records.filter(r => {
       return r.date.startsWith(selectedMonth)
@@ -130,7 +188,7 @@ Page({
     
     const totalOut = totalBlueOut + totalRedOut
     const totalIn = totalBlueIn + totalRedIn
-    const maxValue = Math.max(totalOut, totalIn, 1)
+    const maxValue = Math.max(totalBlueOut + totalRedOut, totalBlueIn + totalRedIn, 1)
     const maxHeight = 160
     
     this.setData({
@@ -140,8 +198,10 @@ Page({
       totalRedIn,
       totalOut,
       totalIn,
-      barOut: Math.max(4, (totalOut / maxValue) * maxHeight),
-      barIn: Math.max(4, (totalIn / maxValue) * maxHeight),
+      barBlueOut: Math.max(4, (totalBlueOut / maxValue) * maxHeight),
+      barBlueIn: Math.max(4, (totalBlueIn / maxValue) * maxHeight),
+      barRedOut: Math.max(4, (totalRedOut / maxValue) * maxHeight),
+      barRedIn: Math.max(4, (totalRedIn / maxValue) * maxHeight),
       dailyData,
       maxDaily
     })
@@ -178,7 +238,7 @@ Page({
     
     const totalOut = totalBlueOut + totalRedOut
     const totalIn = totalBlueIn + totalRedIn
-    const maxValue = Math.max(totalOut, totalIn, 1)
+    const maxValue = Math.max(totalBlueOut + totalRedOut, totalBlueIn + totalRedIn, 1)
     const maxHeight = 160
     
     this.setData({
@@ -188,8 +248,10 @@ Page({
       totalRedIn,
       totalOut,
       totalIn,
-      barOut: Math.max(4, (totalOut / maxValue) * maxHeight),
-      barIn: Math.max(4, (totalIn / maxValue) * maxHeight),
+      barBlueOut: Math.max(4, (totalBlueOut / maxValue) * maxHeight),
+      barBlueIn: Math.max(4, (totalBlueIn / maxValue) * maxHeight),
+      barRedOut: Math.max(4, (totalRedOut / maxValue) * maxHeight),
+      barRedIn: Math.max(4, (totalRedIn / maxValue) * maxHeight),
       monthlyData,
       maxMonthly
     })

@@ -18,7 +18,8 @@ Page({
     barBlueOut: 4,
     barBlueIn: 4,
     barRedOut: 4,
-    barRedIn: 4
+    barRedIn: 4,
+    animationData: null
   },
 
   onLoad() {
@@ -75,6 +76,34 @@ Page({
     })
   },
 
+  animateBars() {
+    const animation = wx.createAnimation({
+      duration: 400,
+      timingFunction: 'ease-out',
+      delay: 0
+    })
+    
+    animation.opacity(0).translateY(15).step()
+    
+    this.setData({
+      animationData: animation.export()
+    })
+  },
+
+  animateBarsIn() {
+    const animation = wx.createAnimation({
+      duration: 500,
+      timingFunction: 'ease-out',
+      delay: 0
+    })
+    
+    animation.opacity(1).translateY(0).step()
+    
+    this.setData({
+      animationData: animation.export()
+    })
+  },
+
   updateQuickType() {
     const { selectedDate, today, monthStart } = this.data
     
@@ -102,81 +131,105 @@ Page({
 
   onDateChange(e) {
     const selectedDate = e.detail.value
-    this.setData({
-      selectedDate,
-      blueOut: 0,
-      blueIn: 0,
-      redOut: 0,
-      redIn: 0,
-      remark: ''
-    }, () => {
-      this.updateQuickType()
-      this.loadData()
-    })
+    this.animateBars()
+    setTimeout(() => {
+      this.setData({
+        selectedDate,
+        blueOut: 0,
+        blueIn: 0,
+        redOut: 0,
+        redIn: 0,
+        remark: ''
+      }, () => {
+        this.updateQuickType()
+        this.loadData()
+        this.animateBarsIn()
+      })
+    }, 400)
   },
 
   goToToday() {
-    this.setData({
-      selectedDate: this.data.today,
-      quickType: 'today',
-      blueOut: 0,
-      blueIn: 0,
-      redOut: 0,
-      redIn: 0,
-      remark: ''
-    })
-    this.loadData()
+    this.animateBars()
+    setTimeout(() => {
+      this.setData({
+        selectedDate: this.data.today,
+        quickType: 'today',
+        blueOut: 0,
+        blueIn: 0,
+        redOut: 0,
+        redIn: 0,
+        remark: ''
+      }, () => {
+        this.loadData()
+        this.animateBarsIn()
+      })
+    }, 400)
   },
 
   goToYesterday() {
-    const currentDate = new Date(this.data.selectedDate)
-    currentDate.setDate(currentDate.getDate() - 1)
-    const yesterdayDate = util.formatDate(currentDate)
-    
-    this.setData({
-      selectedDate: yesterdayDate,
-      quickType: 'yesterday',
-      blueOut: 0,
-      blueIn: 0,
-      redOut: 0,
-      redIn: 0,
-      remark: ''
-    })
-    this.loadData()
+    this.animateBars()
+    setTimeout(() => {
+      const currentDate = new Date(this.data.selectedDate)
+      currentDate.setDate(currentDate.getDate() - 1)
+      const yesterdayDate = util.formatDate(currentDate)
+      
+      this.setData({
+        selectedDate: yesterdayDate,
+        quickType: 'yesterday',
+        blueOut: 0,
+        blueIn: 0,
+        redOut: 0,
+        redIn: 0,
+        remark: ''
+      }, () => {
+        this.loadData()
+        this.animateBarsIn()
+      })
+    }, 400)
   },
 
   goToLastWeek() {
-    const currentDate = new Date(this.data.selectedDate)
-    currentDate.setDate(currentDate.getDate() - 7)
-    const lastWeekDate = util.formatDate(currentDate)
-    
-    this.setData({
-      selectedDate: lastWeekDate,
-      quickType: 'lastWeek',
-      blueOut: 0,
-      blueIn: 0,
-      redOut: 0,
-      redIn: 0,
-      remark: ''
-    })
-    this.loadData()
+    this.animateBars()
+    setTimeout(() => {
+      const currentDate = new Date(this.data.selectedDate)
+      currentDate.setDate(currentDate.getDate() - 7)
+      const lastWeekDate = util.formatDate(currentDate)
+      
+      this.setData({
+        selectedDate: lastWeekDate,
+        quickType: 'lastWeek',
+        blueOut: 0,
+        blueIn: 0,
+        redOut: 0,
+        redIn: 0,
+        remark: ''
+      }, () => {
+        this.loadData()
+        this.animateBarsIn()
+      })
+    }, 400)
   },
 
   goToMonthStart() {
-    const currentDate = new Date(this.data.selectedDate)
-    const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
-    const monthStartDate = util.formatDate(monthStart)
-    
-    this.setData({
-      selectedDate: monthStartDate,
-      quickType: 'monthStart',
-      blueOut: 0,
-      blueIn: 0,
-      redOut: 0,
-      redIn: 0,
-      remark: ''
-    })
-    this.loadData()
+    this.animateBars()
+    setTimeout(() => {
+      const currentDate = new Date(this.data.selectedDate)
+      const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
+      const monthStartDate = util.formatDate(monthStart)
+      
+      this.setData({
+        selectedDate: monthStartDate,
+        quickType: 'monthStart',
+        blueOut: 0,
+        blueIn: 0,
+        redOut: 0,
+        redIn: 0,
+        remark: ''
+      }, () => {
+        this.loadData()
+        this.animateBarsIn()
+      })
+    }, 400)
   },
 
   onBlueOutChange(e) {

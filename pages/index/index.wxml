@@ -18,7 +18,7 @@
     <view class="quick-date-item {{quickType === 'monthStart' ? 'active' : ''}}" bindtap="goToMonthStart">月初</view>
   </view>
 
-  <view class="header-card card">
+  <view class="header-card card" animation="{{animationData}}">
     <view class="date-label">当日收发汇总</view>
     <view class="summary-row">
       <view class="summary-item blue">
@@ -44,7 +44,7 @@
 
   <view class="chart-card card">
     <view class="chart-title">数据可视化</view>
-    <view class="chart-container">
+    <view class="chart-container" animation="{{animationData}}">
       <view class="chart-row">
         <view class="chart-item">
           <view class="bar-wrapper">

@@ -9,7 +9,7 @@
       <picker mode="date" value="{{selectedMonth}}" fields="month" start="2020-01" end="2099-12" bindchange="onMonthChange">
         <view class="date-display">
           <text class="date-icon">📅</text>
-          <text class="date-text">{{selectedMonth}}</text>
+          <text class="date-text">{{selectedMonth}}月</text>
           <text class="date-arrow">▼</text>
         </view>
       </picker>
@@ -31,7 +31,7 @@
   </view>
 
   <view class="summary-card card">
-    <view class="summary-title">{{currentTab === 'month' ? selectedMonth : selectedYear}}年 收发汇总</view>
+    <view class="summary-title">{{currentTab === 'month' ? selectedMonth + '月' : selectedYear + '年'}} 收发汇总</view>
     <view class="summary-grid">
       <view class="summary-item">
         <view class="summary-label">蓝色发出</view>
@@ -57,31 +57,73 @@
 
   <view class="chart-card card">
     <view class="chart-title">收发对比</view>
-    <view class="chart-container">
+    <view class="chart-container" animation="{{animationData}}">
       <view class="chart-bar-group">
         <view class="chart-bar-item">
-          <view class="bar out" style="height: {{barOut}}rpx;"></view>
-          <view class="bar-label">发出</view>
-          <view class="bar-value">{{totalOut}}</view>
+          <view class="bar-group-vertical">
+            <view class="bar blue-out" style="height: {{barBlueOut}}rpx;"></view>
+            <view class="bar blue-in" style="height: {{barBlueIn}}rpx;"></view>
+          </view>
+          <view class="bar-label">蓝色框子</view>
+          <view class="bar-value">出:{{totalBlueOut}} 入:{{totalBlueIn}}</view>
         </view>
         <view class="chart-bar-item">
-          <view class="bar in" style="height: {{barIn}}rpx;"></view>
-          <view class="bar-label">收回</view>
-          <view class="bar-value">{{totalIn}}</view>
+          <view class="bar-group-vertical">
+            <view class="bar red-out" style="height: {{barRedOut}}rpx;"></view>
+            <view class="bar red-in" style="height: {{barRedIn}}rpx;"></view>
+          </view>
+          <view class="bar-label">红色框子</view>
+          <view class="bar-value">出:{{totalRedOut}} 入:{{totalRedIn}}</view>
         </view>
+      </view>
+    </view>
+    <view class="chart-legend">
+      <view class="legend-item">
+        <view class="legend-color legend-blue-out"></view>
+        <text>发出</text>
+      </view>
+      <view class="legend-item">
+        <view class="legend-color legend-blue-in"></view>
+        <text>收回</text>
       </view>
     </view>
   </view>
 
   <view class="chart-card card" wx:if="{{currentTab === 'month'}}">
     <view class="chart-title">每日趋势</view>
-    <view class="trend-list">
+    <view class="trend-list" animation="{{animationData}}">
       <view class="trend-item" wx:for="{{dailyData}}" wx:key="date">
         <view class="trend-date">{{item.date}}</view>
-        <view class="trend-bars">
-          <view class="trend-bar blue-out" style="width: {{item.blueOut / maxDaily * 100}}%;"></view>
+        <view class="trend-content">
+          <view class="trend-group">
+            <view class="trend-bar blue-out" style="width: {{item.blueOut / maxDaily * 100}}%;"></view>
+            <view class="trend-bar blue-in" style="width: {{item.blueIn / maxDaily * 100}}%;"></view>
+            <view class="trend-num blue">蓝{{item.blueOut}}/{{item.blueIn}}</view>
+          </view>
+          <view class="trend-group">
+            <view class="trend-bar red-out" style="width: {{item.redOut / maxDaily * 100}}%;"></view>
+            <view class="trend-bar red-in" style="width: {{item.redIn / maxDaily * 100}}%;"></view>
+            <view class="trend-num red">红{{item.redOut}}/{{item.redIn}}</view>
+          </view>
         </view>
-        <view class="trend-num">蓝出:{{item.blueOut}} 蓝入:{{item.blueIn}} 红出:{{item.redOut}} 红入:{{item.redIn}}</view>
+      </view>
+    </view>
+    <view class="trend-legend">
+      <view class="legend-item">
+        <view class="legend-color legend-blue-out"></view>
+        <text>蓝出</text>
+      </view>
+      <view class="legend-item">
+        <view class="legend-color legend-blue-in"></view>
+        <text>蓝入</text>
+      </view>
+      <view class="legend-item">
+        <view class="legend-color legend-red-out"></view>
+        <text>红出</text>
+      </view>
+      <view class="legend-item">
+        <view class="legend-color legend-red-in"></view>
+        <text>红入</text>
       </view>
     </view>
     <view class="empty-tip" wx:if="{{dailyData.length === 0}}">
@@ -91,14 +133,39 @@
 
   <view class="chart-card card" wx:if="{{currentTab === 'year'}}">
     <view class="chart-title">月度趋势</view>
-    <view class="trend-list">
+    <view class="trend-list" animation="{{animationData}}">
       <view class="trend-item" wx:for="{{monthlyData}}" wx:key="month">
         <view class="trend-date">{{item.month}}月</view>
-        <view class="trend-bars">
-          <view class="trend-bar blue-out" style="width: {{item.blueOut / maxMonthly * 100}}%;"></view>
-          <view class="trend-bar blue-in" style="width: {{item.blueIn / maxMonthly * 100}}%;"></view>
+        <view class="trend-content">
+          <view class="trend-group">
+            <view class="trend-bar blue-out" style="width: {{item.blueOut / maxMonthly * 100}}%;"></view>
+            <view class="trend-bar blue-in" style="width: {{item.blueIn / maxMonthly * 100}}%;"></view>
+            <view class="trend-num blue">蓝{{item.blueOut}}/{{item.blueIn}}</view>
+          </view>
+          <view class="trend-group">
+            <view class="trend-bar red-out" style="width: {{item.redOut / maxMonthly * 100}}%;"></view>
+            <view class="trend-bar red-in" style="width: {{item.redIn / maxMonthly * 100}}%;"></view>
+            <view class="trend-num red">红{{item.redOut}}/{{item.redIn}}</view>
+          </view>
         </view>
-        <view class="trend-num">蓝出:{{item.blueOut}} 蓝入:{{item.blueIn}}</view>
+      </view>
+    </view>
+    <view class="trend-legend">
+      <view class="legend-item">
+        <view class="legend-color legend-blue-out"></view>
+        <text>蓝出</text>
+      </view>
+      <view class="legend-item">
+        <view class="legend-color legend-blue-in"></view>
+        <text>蓝入</text>
+      </view>
+      <view class="legend-item">
+        <view class="legend-color legend-red-out"></view>
+        <text>红出</text>
+      </view>
+      <view class="legend-item">
+        <view class="legend-color legend-red-in"></view>
+        <text>红入</text>
       </view>
     </view>
     <view class="empty-tip" wx:if="{{monthlyData.length === 0}}">
