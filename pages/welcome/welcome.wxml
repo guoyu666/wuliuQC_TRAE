@@ -1,0 +1,40 @@
+<view class="container">
+  <view class="bg-decoration">
+    <view class="bg-circle bg-circle-1"></view>
+    <view class="bg-circle bg-circle-2"></view>
+    <view class="bg-circle bg-circle-3"></view>
+  </view>
+
+  <view class="content">
+    <view class="logo-section">
+      <view class="logo-wrapper">
+        <view class="logo">📦</view>
+      </view>
+      <view class="app-name">框子收发</view>
+      <view class="app-desc">库房管理更轻松</view>
+    </view>
+
+    <view class="features">
+      <view class="feature-item">
+        <view class="feature-icon">📝</view>
+        <view class="feature-text">快速记录收发</view>
+      </view>
+      <view class="feature-item">
+        <view class="feature-icon">📊</view>
+        <view class="feature-text">数据可视化</view>
+      </view>
+      <view class="feature-item">
+        <view class="feature-icon">📋</view>
+        <view class="feature-text">历史记录查询</view>
+      </view>
+      <view class="feature-item">
+        <view class="feature-icon">📈</view>
+        <view class="feature-text">统计报表分析</view>
+      </view>
+    </view>
+
+    <view class="start-btn" bindtap="goToIndex">
+      <text>开始使用</text>
+    </view>
+  </view>
+</view>
