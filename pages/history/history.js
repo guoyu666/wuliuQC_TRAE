@@ -1,4 +1,5 @@
 const util = require('../../utils/util.js')
+const db = require('../../utils/db.js')
 
 Page({
   data: {
@@ -47,22 +48,19 @@ Page({
   },
 
   loadRecords() {
-    const records = wx.getStorageSync('records') || []
-    const sortedRecords = records.sort((a, b) => {
-      return new Date(b.createTime) - new Date(a.createTime)
-    })
-    
-    const grouped = this.groupByDate(sortedRecords)
-    const displayGroupedRecords = grouped.slice(0, this.data.pageSize)
-    const hasMore = grouped.length > this.data.pageSize
-    
-    this.setData({
-      records: sortedRecords,
-      groupedRecords: grouped,
-      currentPage: 1,
-      hasMore: hasMore,
-      displayGroupedRecords: displayGroupedRecords,
-      totalCount: grouped.length
+    db.getAllRecords().then(sortedRecords => {
+      const grouped = this.groupByDate(sortedRecords)
+      const displayGroupedRecords = grouped.slice(0, this.data.pageSize)
+      const hasMore = grouped.length > this.data.pageSize
+      
+      this.setData({
+        records: sortedRecords,
+        groupedRecords: grouped,
+        currentPage: 1,
+        hasMore: hasMore,
+        displayGroupedRecords: displayGroupedRecords,
+        totalCount: grouped.length
+      })
     })
   },
 
@@ -119,19 +117,19 @@ Page({
 
   editData(e) {
     const { id } = e.currentTarget.dataset
-    const records = wx.getStorageSync('records') || []
-    const record = records.find(r => r.id === id)
     
-    if (record) {
-      this.setData({
-        showDataModal: true,
-        editRecordId: id,
-        editBlueOut: record.blueOut || 0,
-        editBlueIn: record.blueIn || 0,
-        editRedOut: record.redOut || 0,
-        editRedIn: record.redIn || 0
-      })
-    }
+    db.getRecordById(id).then(record => {
+      if (record) {
+        this.setData({
+          showDataModal: true,
+          editRecordId: id,
+          editBlueOut: record.blueOut || 0,
+          editBlueIn: record.blueIn || 0,
+          editRedOut: record.redOut || 0,
+          editRedIn: record.redIn || 0
+        })
+      }
+    })
   },
 
   hideDataModal() {
@@ -172,27 +170,18 @@ Page({
   saveData() {
     const { editRecordId, editBlueOut, editBlueIn, editRedOut, editRedIn } = this.data
     
-    const records = wx.getStorageSync('records') || []
-    const newRecords = records.map(r => {
-      if (r.id === editRecordId) {
-        return { 
-          ...r, 
-          blueOut: editBlueOut, 
-          blueIn: editBlueIn, 
-          redOut: editRedOut, 
-          redIn: editRedIn 
-        }
-      }
-      return r
-    })
-    
-    wx.setStorageSync('records', newRecords)
-    this.hideDataModal()
-    this.loadRecords()
-    
-    wx.showToast({
-      title: '保存成功',
-      icon: 'success'
+    db.updateRecord(editRecordId, {
+      blueOut: editBlueOut,
+      blueIn: editBlueIn,
+      redOut: editRedOut,
+      redIn: editRedIn
+    }).then(() => {
+      this.hideDataModal()
+      this.loadRecords()
+      wx.showToast({
+        title: '保存成功',
+        icon: 'success'
+      })
     })
   },
 
@@ -220,21 +209,13 @@ Page({
   saveRemark() {
     const { editRecordId, editRemark } = this.data
     
-    const records = wx.getStorageSync('records') || []
-    const newRecords = records.map(r => {
-      if (r.id === editRecordId) {
-        return { ...r, remark: editRemark.trim() }
-      }
-      return r
-    })
-    
-    wx.setStorageSync('records', newRecords)
-    this.hideRemarkModal()
-    this.loadRecords()
-    
-    wx.showToast({
-      title: '保存成功',
-      icon: 'success'
+    db.updateRecord(editRecordId, { remark: editRemark.trim() }).then(() => {
+      this.hideRemarkModal()
+      this.loadRecords()
+      wx.showToast({
+        title: '保存成功',
+        icon: 'success'
+      })
     })
   },
 
@@ -387,13 +368,12 @@ Page({
       content: '确定要删除这条记录吗？',
       success: (res) => {
         if (res.confirm) {
-          const records = wx.getStorageSync('records') || []
-          const newRecords = records.filter(r => r.id !== id)
-          wx.setStorageSync('records', newRecords)
-          this.loadRecords()
-          wx.showToast({
-            title: '已删除',
-            icon: 'success'
+          db.deleteRecord(id).then(() => {
+            this.loadRecords()
+            wx.showToast({
+              title: '已删除',
+              icon: 'success'
+            })
           })
         }
       }

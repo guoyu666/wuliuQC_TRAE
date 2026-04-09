@@ -1,4 +1,5 @@
 const util = require('../../utils/util.js')
+const db = require('../../utils/db.js')
 
 Page({
   data: {
@@ -149,13 +150,13 @@ Page({
   },
 
   loadData() {
-    const records = wx.getStorageSync('records') || []
-    
-    if (this.data.currentTab === 'month') {
-      this.loadMonthData(records)
-    } else {
-      this.loadYearData(records)
-    }
+    db.getAllRecords().then(records => {
+      if (this.data.currentTab === 'month') {
+        this.loadMonthData(records)
+      } else {
+        this.loadYearData(records)
+      }
+    })
   },
 
   loadMonthData(records) {

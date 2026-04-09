@@ -1,4 +1,5 @@
 const util = require('../../utils/util.js')
+const db = require('../../utils/db.js')
 
 Page({
   data: {
@@ -41,38 +42,39 @@ Page({
 
   loadData() {
     const { selectedDate } = this.data
-    const records = wx.getStorageSync('records') || []
-    const dayRecords = records.filter(r => r.date === selectedDate)
-    
-    let todayBlueOut = 0
-    let todayBlueIn = 0
-    let todayRedOut = 0
-    let todayRedIn = 0
-    
-    dayRecords.forEach(r => {
-      todayBlueOut += r.blueOut || 0
-      todayBlueIn += r.blueIn || 0
-      todayRedOut += r.redOut || 0
-      todayRedIn += r.redIn || 0
-    })
+    db.getAllRecords().then(allRecords => {
+      const dayRecords = allRecords.filter(r => r.date === selectedDate)
+      
+      let todayBlueOut = 0
+      let todayBlueIn = 0
+      let todayRedOut = 0
+      let todayRedIn = 0
+      
+      dayRecords.forEach(r => {
+        todayBlueOut += r.blueOut || 0
+        todayBlueIn += r.blueIn || 0
+        todayRedOut += r.redOut || 0
+        todayRedIn += r.redIn || 0
+      })
 
-    const maxValue = Math.max(todayBlueOut, todayBlueIn, todayRedOut, todayRedIn, 1)
-    const maxHeight = 160
+      const maxValue = Math.max(todayBlueOut, todayBlueIn, todayRedOut, todayRedIn, 1)
+      const maxHeight = 160
 
-    const barBlueOut = Math.max(4, (todayBlueOut / maxValue) * maxHeight)
-    const barBlueIn = Math.max(4, (todayBlueIn / maxValue) * maxHeight)
-    const barRedOut = Math.max(4, (todayRedOut / maxValue) * maxHeight)
-    const barRedIn = Math.max(4, (todayRedIn / maxValue) * maxHeight)
-    
-    this.setData({
-      todayBlueOut,
-      todayBlueIn,
-      todayRedOut,
-      todayRedIn,
-      barBlueOut,
-      barBlueIn,
-      barRedOut,
-      barRedIn
+      const barBlueOut = Math.max(4, (todayBlueOut / maxValue) * maxHeight)
+      const barBlueIn = Math.max(4, (todayBlueIn / maxValue) * maxHeight)
+      const barRedOut = Math.max(4, (todayRedOut / maxValue) * maxHeight)
+      const barRedIn = Math.max(4, (todayRedIn / maxValue) * maxHeight)
+      
+      this.setData({
+        todayBlueOut,
+        todayBlueIn,
+        todayRedOut,
+        todayRedIn,
+        barBlueOut,
+        barBlueIn,
+        barRedOut,
+        barRedIn
+      })
     })
   },
 
@@ -262,29 +264,30 @@ Page({
 
   copyLastRemark() {
     const { selectedDate } = this.data
-    const records = wx.getStorageSync('records') || []
-    const dayRecords = records.filter(r => r.date === selectedDate)
-    
-    if (dayRecords.length > 0) {
-      const lastRecord = dayRecords[dayRecords.length - 1]
-      if (lastRecord.remark) {
-        this.setData({ remark: lastRecord.remark })
-        wx.showToast({
-          title: '已复制上次备注',
-          icon: 'none'
-        })
+    db.getAllRecords().then(allRecords => {
+      const dayRecords = allRecords.filter(r => r.date === selectedDate)
+      
+      if (dayRecords.length > 0) {
+        const lastRecord = dayRecords[dayRecords.length - 1]
+        if (lastRecord.remark) {
+          this.setData({ remark: lastRecord.remark })
+          wx.showToast({
+            title: '已复制上次备注',
+            icon: 'none'
+          })
+        } else {
+          wx.showToast({
+            title: '上次无备注',
+            icon: 'none'
+          })
+        }
       } else {
         wx.showToast({
-          title: '上次无备注',
+          title: '无历史记录',
           icon: 'none'
         })
       }
-    } else {
-      wx.showToast({
-        title: '无历史记录',
-        icon: 'none'
-      })
-    }
+    })
   },
 
   submitRecord() {
@@ -299,33 +302,29 @@ Page({
     }
 
     const newRecord = {
-      id: Date.now().toString(),
       date: selectedDate,
       blueOut,
       blueIn,
       redOut,
       redIn,
-      remark: remark.trim(),
-      createTime: util.formatTime(new Date())
+      remark: remark.trim()
     }
 
-    const records = wx.getStorageSync('records') || []
-    records.push(newRecord)
-    wx.setStorageSync('records', records)
-    
-    this.setData({
-      blueOut: 0,
-      blueIn: 0,
-      redOut: 0,
-      redIn: 0,
-      remark: ''
-    })
-    
-    this.loadData()
-    
-    wx.showToast({
-      title: '记录成功',
-      icon: 'success'
+    db.addRecord(newRecord).then(() => {
+      this.setData({
+        blueOut: 0,
+        blueIn: 0,
+        redOut: 0,
+        redIn: 0,
+        remark: ''
+      })
+      
+      this.loadData()
+      
+      wx.showToast({
+        title: '记录成功',
+        icon: 'success'
+      })
     })
   },
 
