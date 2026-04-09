@@ -286,11 +286,5 @@ Page({
     wx.navigateTo({
       url: '/pages/statistics/statistics'
     })
-  },
-
-  goToLogin() {
-    wx.navigateTo({
-      url: '/pages/login/login'
-    })
   }
 })

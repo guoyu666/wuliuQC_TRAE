@@ -2,8 +2,7 @@
   "pages": [
     "pages/index/index",
     "pages/history/history",
-    "pages/statistics/statistics",
-    "pages/login/login"
+    "pages/statistics/statistics"
   ],
   "window": {
     "backgroundTextStyle": "light",
@@ -12,6 +11,5 @@
     "navigationBarTextStyle": "white"
   },
   "sitemapLocation": "sitemap.json",
-  "cloud": true,
   "lazyCodeLoading": "requiredComponents"
 }
