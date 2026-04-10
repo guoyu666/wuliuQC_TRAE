@@ -21,5 +21,6 @@
     "include": []
   },
   "appid": "wx1bd30c729994cb73",
-  "editorSetting": {}
+  "editorSetting": {},
+  "cloudfunctionRoot": "cloudfunctions/"
 }
