@@ -80,11 +80,19 @@
     <view class="chart-legend">
       <view class="legend-item">
         <view class="legend-color legend-blue-out"></view>
-        <text>发出</text>
+        <text>蓝出</text>
       </view>
       <view class="legend-item">
         <view class="legend-color legend-blue-in"></view>
-        <text>收回</text>
+        <text>蓝入</text>
+      </view>
+      <view class="legend-item">
+        <view class="legend-color legend-red-out"></view>
+        <text>红出</text>
+      </view>
+      <view class="legend-item">
+        <view class="legend-color legend-red-in"></view>
+        <text>红入</text>
       </view>
     </view>
   </view>

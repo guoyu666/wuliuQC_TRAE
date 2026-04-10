@@ -296,6 +296,14 @@
   background-color: #42A5F5;
 }
 
+.legend-red-out {
+  background-color: #D32F2F;
+}
+
+.legend-red-in {
+  background-color: #EF5350;
+}
+
 .trend-legend .legend-red-out {
   background-color: #D32F2F;
 }
