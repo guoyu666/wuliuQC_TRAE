@@ -64,47 +64,6 @@ async function initCloud() {
   }
 }
 
-async function _addToCloud(collectionName, data) {
-  if (!isCloudEnabled || !openid) return null
-  try {
-    const db = wx.cloud.database()
-    return await db.collection(collectionName).add({ data: { _openid: openid, ...data, syncTime: new Date() } })
-  } catch (err) {
-    console.error('云端添加失败', err)
-    return null
-  }
-}
-
-async function _updateInCloud(collectionName, id, data) {
-  if (!isCloudEnabled || !openid) return null
-  try {
-    const db = wx.cloud.database()
-    const res = await db.collection(collectionName).where({ _openid: openid, id }).get()
-    if (res.data && res.data.length > 0) {
-      return await db.collection(collectionName).doc(res.data[0]._id).update({ data })
-    }
-    return null
-  } catch (err) {
-    console.error('云端更新失败', err)
-    return null
-  }
-}
-
-async function _deleteFromCloud(collectionName, id) {
-  if (!isCloudEnabled || !openid) return null
-  try {
-    const db = wx.cloud.database()
-    const res = await db.collection(collectionName).where({ _openid: openid, id }).get()
-    if (res.data && res.data.length > 0) {
-      return await db.collection(collectionName).doc(res.data[0]._id).remove()
-    }
-    return null
-  } catch (err) {
-    console.error('云端删除失败', err)
-    return null
-  }
-}
-
 async function addRecord(record) {
   const localRecords = wx.getStorageSync('records') || []
   const newRecord = {
@@ -117,29 +76,40 @@ async function addRecord(record) {
   localRecords.push(newRecord)
   wx.setStorageSync('records', localRecords)
 
-  const cloudResult = await _addToCloud('records', {
-    id: newRecord.id,
-    date: newRecord.date,
-    routeName: newRecord.routeName,
-    plateNumber: newRecord.plateNumber,
-    sendBlueOut: newRecord.sendBlueOut || 0,
-    sendRedOut: newRecord.sendRedOut || 0,
-    blueOut: newRecord.blueOut,
-    blueIn: newRecord.blueIn,
-    redOut: newRecord.redOut,
-    redIn: newRecord.redIn,
-    remark: newRecord.remark,
-    createTime: new Date(newRecord.createTime)
-  })
+  if (isCloudEnabled && openid) {
+    try {
+      const db = wx.cloud.database()
+      await db.collection('records').add({
+        data: {
+          _openid: openid,
+          id: newRecord.id,
+          date: newRecord.date,
+          routeName: newRecord.routeName,
+          plateNumber: newRecord.plateNumber,
+          sendBlueOut: newRecord.sendBlueOut || 0,
+          sendRedOut: newRecord.sendRedOut || 0,
+          blueOut: newRecord.blueOut,
+          blueIn: newRecord.blueIn,
+          redOut: newRecord.redOut,
+          redIn: newRecord.redIn,
+          remark: newRecord.remark,
+          createTime: new Date(newRecord.createTime),
+          syncTime: new Date()
+        }
+      })
 
-  if (cloudResult) {
-    newRecord.synced = true
-    const index = localRecords.findIndex(r => r.id === newRecord.id)
-    if (index !== -1) {
-      localRecords[index] = newRecord
-      wx.setStorageSync('records', localRecords)
+      newRecord.synced = true
+      const index = localRecords.findIndex(r => r.id === newRecord.id)
+      if (index !== -1) {
+        localRecords[index] = newRecord
+        wx.setStorageSync('records', localRecords)
+      }
+
+      return { success: true, id: newRecord.id, synced: true }
+    } catch (err) {
+      console.error('云端同步失败', err)
+      return { success: true, id: newRecord.id, synced: false }
     }
-    return { success: true, id: newRecord.id, synced: true }
   }
 
   return { success: true, id: newRecord.id, synced: false }
@@ -196,7 +166,23 @@ async function deleteRecord(id) {
   const newRecords = records.filter(r => r.id !== id)
   wx.setStorageSync('records', newRecords)
 
-  await _deleteFromCloud('records', id)
+  if (isCloudEnabled && openid) {
+    try {
+      const db = wx.cloud.database()
+      const cloudRecords = await db.collection('records')
+        .where({
+          _openid: openid,
+          id: id
+        })
+        .get()
+
+      if (cloudRecords.data && cloudRecords.data.length > 0) {
+        await db.collection('records').doc(cloudRecords.data[0]._id).remove()
+      }
+    } catch (err) {
+      console.error('云端删除失败', err)
+    }
+  }
 
   return { success: true }
 }
@@ -211,24 +197,40 @@ async function updateRecord(id, updates) {
   })
   wx.setStorageSync('records', newRecords)
 
-  const cloudResult = await _updateInCloud('records', id, {
-    routeName: updates.routeName,
-    plateNumber: updates.plateNumber,
-    sendBlueOut: updates.sendBlueOut || 0,
-    sendRedOut: updates.sendRedOut || 0,
-    blueOut: updates.blueOut,
-    blueIn: updates.blueIn,
-    redOut: updates.redOut,
-    redIn: updates.redIn,
-    remark: updates.remark,
-    syncTime: new Date()
-  })
+  if (isCloudEnabled && openid) {
+    try {
+      const db = wx.cloud.database()
+      const cloudRecords = await db.collection('records')
+        .where({
+          _openid: openid,
+          id: id
+        })
+        .get()
 
-  if (cloudResult) {
-    const index = newRecords.findIndex(r => r.id === id)
-    if (index !== -1) {
-      newRecords[index].synced = true
-      wx.setStorageSync('records', newRecords)
+      if (cloudRecords.data && cloudRecords.data.length > 0) {
+        await db.collection('records').doc(cloudRecords.data[0]._id).update({
+          data: {
+            routeName: updates.routeName,
+            plateNumber: updates.plateNumber,
+            sendBlueOut: updates.sendBlueOut || 0,
+            sendRedOut: updates.sendRedOut || 0,
+            blueOut: updates.blueOut,
+            blueIn: updates.blueIn,
+            redOut: updates.redOut,
+            redIn: updates.redIn,
+            remark: updates.remark,
+            syncTime: new Date()
+          }
+        })
+
+        const index = newRecords.findIndex(r => r.id === id)
+        if (index !== -1) {
+          newRecords[index].synced = true
+          wx.setStorageSync('records', newRecords)
+        }
+      }
+    } catch (err) {
+      console.error('云端更新失败', err)
     }
   }
 
@@ -260,6 +262,7 @@ async function syncRecords() {
 
     if (result.result && result.result.success) {
       const mergedRecords = result.result.mergedRecords
+
       wx.setStorageSync('records', mergedRecords)
 
       return {
@@ -297,47 +300,6 @@ function getSyncStatus() {
   }
 }
 
-function getPresets() {
-  const presets = wx.getStorageSync('presets') || { routes: [], plates: [] }
-  return presets
-}
-
-function addRoute(routeName) {
-  const presets = getPresets()
-  if (routeName && !presets.routes.includes(routeName)) {
-    presets.routes.push(routeName)
-    wx.setStorageSync('presets', presets)
-  }
-  return presets.routes
-}
-
-function addPlate(plateNumber) {
-  const presets = getPresets()
-  if (plateNumber && !presets.plates.includes(plateNumber)) {
-    presets.plates.push(plateNumber)
-    wx.setStorageSync('presets', presets)
-  }
-  return presets.plates
-}
-
-function deleteRoute(routeName) {
-  const presets = getPresets()
-  presets.routes = presets.routes.filter(r => r !== routeName)
-  wx.setStorageSync('presets', presets)
-  return presets.routes
-}
-
-function deletePlate(plateNumber) {
-  const presets = getPresets()
-  presets.plates = presets.plates.filter(p => p !== plateNumber)
-  wx.setStorageSync('presets', presets)
-  return presets.plates
-}
-
-function clearPresets() {
-  wx.setStorageSync('presets', { routes: [], plates: [] })
-}
-
 module.exports = {
   initCloud,
   setOpenid,
@@ -352,11 +314,5 @@ module.exports = {
   updateRecord,
   getRecordById,
   syncRecords,
-  getSyncStatus,
-  getPresets,
-  addRoute,
-  addPlate,
-  deleteRoute,
-  deletePlate,
-  clearPresets
+  getSyncStatus
 }

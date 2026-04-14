@@ -267,7 +267,7 @@ Page({
       startDate: dates[0],
       endDate: dates[dates.length - 1],
       exportRecords: records,
-      exportStats: util.calculateStats(records)
+      exportStats: this.calculateStats(records)
     })
   },
 
@@ -303,8 +303,19 @@ Page({
 
     this.setData({
       exportRecords: filtered,
-      exportStats: util.calculateStats(filtered)
+      exportStats: this.calculateStats(filtered)
     })
+  },
+
+  calculateStats(records) {
+    let blueOut = 0, blueIn = 0, redOut = 0, redIn = 0
+    records.forEach(r => {
+      blueOut += r.blueOut || 0
+      blueIn += r.blueIn || 0
+      redOut += r.redOut || 0
+      redIn += r.redIn || 0
+    })
+    return { blueOut, blueIn, redOut, redIn }
   },
 
   exportRecords() {

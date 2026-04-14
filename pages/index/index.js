@@ -25,22 +25,13 @@ Page({
     barBlueIn: 4,
     barRedOut: 4,
     barRedIn: 4,
-    animationData: null,
-    routeOptions: [],
-    plateOptions: [],
-    presetRoutes: [],
-    presetPlates: [],
-    showPresetModal: false,
-    newRoute: '',
-    newPlate: '',
-    selectedRouteIndex: 0,
-    selectedPlateIndex: 0
+    animationData: null
   },
 
   onLoad() {
     const today = new Date()
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
-
+    
     this.setData({
       selectedDate: util.formatDate(today),
       today: util.formatDate(today),
@@ -52,32 +43,43 @@ Page({
 
   onShow() {
     this.loadData()
-    this.loadPresets()
-  },
-
-  loadPresets() {
-    const presets = db.getPresets()
-    this.setData({
-      presetRoutes: presets.routes,
-      presetPlates: presets.plates,
-      routeOptions: presets.routes,
-      plateOptions: presets.plates,
-      selectedRouteIndex: 0,
-      selectedPlateIndex: 0
-    })
   },
 
   loadData() {
     const { selectedDate } = this.data
     db.getAllRecords().then(allRecords => {
       const dayRecords = allRecords.filter(r => r.date === selectedDate)
-      const stats = util.calculateStats(dayRecords)
-      const barHeights = util.calculateBarHeights(stats)
+      
+      let todayBlueOut = 0
+      let todayBlueIn = 0
+      let todayRedOut = 0
+      let todayRedIn = 0
+      
+      dayRecords.forEach(r => {
+        todayBlueOut += r.blueOut || 0
+        todayBlueIn += r.blueIn || 0
+        todayRedOut += r.redOut || 0
+        todayRedIn += r.redIn || 0
+      })
 
+      const maxValue = Math.max(todayBlueOut, todayBlueIn, todayRedOut, todayRedIn, 1)
+      const maxHeight = 160
+
+      const barBlueOut = Math.max(4, (todayBlueOut / maxValue) * maxHeight)
+      const barBlueIn = Math.max(4, (todayBlueIn / maxValue) * maxHeight)
+      const barRedOut = Math.max(4, (todayRedOut / maxValue) * maxHeight)
+      const barRedIn = Math.max(4, (todayRedIn / maxValue) * maxHeight)
+      
       this.setData({
-        ...stats,
+        todayBlueOut,
+        todayBlueIn,
+        todayRedOut,
+        todayRedIn,
         todayRecordCount: dayRecords.length,
-        ...barHeights
+        barBlueOut,
+        barBlueIn,
+        barRedOut,
+        barRedIn
       })
     })
   },
@@ -88,9 +90,9 @@ Page({
       timingFunction: 'ease-out',
       delay: 0
     })
-
+    
     animation.opacity(0).translateY(15).step()
-
+    
     this.setData({
       animationData: animation.export()
     })
@@ -102,39 +104,45 @@ Page({
       timingFunction: 'ease-out',
       delay: 0
     })
-
+    
     animation.opacity(1).translateY(0).step()
-
+    
     this.setData({
       animationData: animation.export()
     })
   },
 
   updateQuickType() {
-    const { selectedDate, today } = this.data
-    const selected = new Date(selectedDate)
-    const todayDate = new Date(today)
-    const diffDays = Math.floor((todayDate - selected) / (1000 * 60 * 60 * 24))
-
+    const { selectedDate, today, monthStart } = this.data
+    
     if (selectedDate === today) {
       this.setData({ quickType: 'today' })
-    } else if (diffDays === 1) {
-      this.setData({ quickType: 'yesterday' })
-    } else if (diffDays >= 7 && diffDays <= 13) {
-      this.setData({ quickType: 'lastWeek' })
-    } else if (selectedDate === selectedDate.substring(0, 7) + '-01') {
-      this.setData({ quickType: 'monthStart' })
     } else {
-      this.setData({ quickType: '' })
+      const selected = new Date(selectedDate)
+      const todayDate = new Date(today)
+      const diffDays = Math.floor((todayDate - selected) / (1000 * 60 * 60 * 24))
+      
+      if (diffDays === 1) {
+        this.setData({ quickType: 'yesterday' })
+      } else if (diffDays >= 7 && diffDays <= 13) {
+        this.setData({ quickType: 'lastWeek' })
+      } else {
+        const currentMonth = selectedDate.substring(0, 7)
+        if (selectedDate === currentMonth + '-01') {
+          this.setData({ quickType: 'monthStart' })
+        } else {
+          this.setData({ quickType: '' })
+        }
+      }
     }
   },
 
-  clearFormAndLoad(date, quickType) {
+  onDateChange(e) {
+    const selectedDate = e.detail.value
     this.animateBars()
     setTimeout(() => {
       this.setData({
-        selectedDate: date,
-        quickType,
+        selectedDate,
         routeName: '',
         plateNumber: '',
         blueOut: 0,
@@ -142,8 +150,31 @@ Page({
         redOut: 0,
         redIn: 0,
         remark: '',
-        selectedRouteIndex: 0,
-        selectedPlateIndex: 0
+        sendBlueOut: 0,
+        sendRedOut: 0
+      }, () => {
+        this.updateQuickType()
+        this.loadData()
+        this.animateBarsIn()
+      })
+    }, 400)
+  },
+
+  goToToday() {
+    this.animateBars()
+    setTimeout(() => {
+      this.setData({
+        selectedDate: this.data.today,
+        quickType: 'today',
+        routeName: '',
+        plateNumber: '',
+        blueOut: 0,
+        blueIn: 0,
+        redOut: 0,
+        redIn: 0,
+        remark: '',
+        sendBlueOut: 0,
+        sendRedOut: 0
       }, () => {
         this.loadData()
         this.animateBarsIn()
@@ -151,32 +182,82 @@ Page({
     }, 400)
   },
 
-  onDateChange(e) {
-    const selectedDate = e.detail.value
-    this.updateQuickType()
-    this.clearFormAndLoad(selectedDate, '')
-  },
-
-  goToToday() {
-    this.clearFormAndLoad(this.data.today, 'today')
-  },
-
   goToYesterday() {
-    const currentDate = new Date(this.data.selectedDate)
-    currentDate.setDate(currentDate.getDate() - 1)
-    this.clearFormAndLoad(util.formatDate(currentDate), 'yesterday')
+    this.animateBars()
+    setTimeout(() => {
+      const currentDate = new Date(this.data.selectedDate)
+      currentDate.setDate(currentDate.getDate() - 1)
+      const yesterdayDate = util.formatDate(currentDate)
+      
+      this.setData({
+        selectedDate: yesterdayDate,
+        quickType: 'yesterday',
+        routeName: '',
+        plateNumber: '',
+        blueOut: 0,
+        blueIn: 0,
+        redOut: 0,
+        redIn: 0,
+        remark: '',
+        sendBlueOut: 0,
+        sendRedOut: 0
+      }, () => {
+        this.loadData()
+        this.animateBarsIn()
+      })
+    }, 400)
   },
 
   goToLastWeek() {
-    const currentDate = new Date(this.data.selectedDate)
-    currentDate.setDate(currentDate.getDate() - 7)
-    this.clearFormAndLoad(util.formatDate(currentDate), 'lastWeek')
+    this.animateBars()
+    setTimeout(() => {
+      const currentDate = new Date(this.data.selectedDate)
+      currentDate.setDate(currentDate.getDate() - 7)
+      const lastWeekDate = util.formatDate(currentDate)
+      
+      this.setData({
+        selectedDate: lastWeekDate,
+        quickType: 'lastWeek',
+        routeName: '',
+        plateNumber: '',
+        blueOut: 0,
+        blueIn: 0,
+        redOut: 0,
+        redIn: 0,
+        remark: '',
+        sendBlueOut: 0,
+        sendRedOut: 0
+      }, () => {
+        this.loadData()
+        this.animateBarsIn()
+      })
+    }, 400)
   },
 
   goToMonthStart() {
-    const currentDate = new Date(this.data.selectedDate)
-    const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
-    this.clearFormAndLoad(util.formatDate(monthStart), 'monthStart')
+    this.animateBars()
+    setTimeout(() => {
+      const currentDate = new Date(this.data.selectedDate)
+      const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
+      const monthStartDate = util.formatDate(monthStart)
+      
+      this.setData({
+        selectedDate: monthStartDate,
+        quickType: 'monthStart',
+        routeName: '',
+        plateNumber: '',
+        blueOut: 0,
+        blueIn: 0,
+        redOut: 0,
+        redIn: 0,
+        remark: '',
+        sendBlueOut: 0,
+        sendRedOut: 0
+      }, () => {
+        this.loadData()
+        this.animateBarsIn()
+      })
+    }, 400)
   },
 
   onRouteNameChange(e) {
@@ -231,106 +312,30 @@ Page({
     this.setData({ [field]: newValue })
   },
 
-  onRouteChange(e) {
-    const index = parseInt(e.detail.value)
-    const route = this.data.routeOptions[index]
-    this.setData({
-      routeName: route || '',
-      selectedRouteIndex: index
-    })
-  },
-
-  onPlateChange(e) {
-    const index = parseInt(e.detail.value)
-    const plate = this.data.plateOptions[index]
-    this.setData({
-      plateNumber: plate || '',
-      selectedPlateIndex: index
-    })
-  },
-
-  showPresetModal() {
-    this.loadPresets()
-    this.setData({ showPresetModal: true })
-  },
-
-  hidePresetModal() {
-    this.setData({ showPresetModal: false })
-  },
-
-  onNewRouteChange(e) {
-    this.setData({ newRoute: e.detail.value })
-  },
-
-  onNewPlateChange(e) {
-    this.setData({ newPlate: e.detail.value })
-  },
-
-  addPresetRoute() {
-    const { newRoute } = this.data
-    if (!newRoute.trim()) {
-      wx.showToast({ title: '请输入线路名称', icon: 'none' })
-      return
-    }
-    const routes = db.addRoute(newRoute.trim())
-    this.setData({
-      presetRoutes: routes,
-      routeOptions: routes,
-      newRoute: ''
-    })
-    wx.showToast({ title: '已添加', icon: 'success' })
-  },
-
-  addPresetPlate() {
-    const { newPlate } = this.data
-    if (!newPlate.trim()) {
-      wx.showToast({ title: '请输入车牌号', icon: 'none' })
-      return
-    }
-    const plates = db.addPlate(newPlate.trim())
-    this.setData({
-      presetPlates: plates,
-      plateOptions: plates,
-      newPlate: ''
-    })
-    wx.showToast({ title: '已添加', icon: 'success' })
-  },
-
-  deletePresetRoute(e) {
-    const route = e.currentTarget.dataset.route
-    const routes = db.deleteRoute(route)
-    this.setData({
-      presetRoutes: routes,
-      routeOptions: routes
-    })
-    wx.showToast({ title: '已删除', icon: 'success' })
-  },
-
-  deletePresetPlate(e) {
-    const plate = e.currentTarget.dataset.plate
-    const plates = db.deletePlate(plate)
-    this.setData({
-      presetPlates: plates,
-      plateOptions: plates
-    })
-    wx.showToast({ title: '已删除', icon: 'success' })
-  },
-
   submitRecord() {
     const { routeName, plateNumber, blueOut, blueIn, redOut, redIn, remark, selectedDate, sendBlueOut, sendRedOut } = this.data
-
+    
     if (!routeName.trim()) {
-      wx.showToast({ title: '请输入线路名称', icon: 'none' })
+      wx.showToast({
+        title: '请输入线路名称',
+        icon: 'none'
+      })
       return
     }
 
     if (!plateNumber.trim()) {
-      wx.showToast({ title: '请输入车牌号', icon: 'none' })
+      wx.showToast({
+        title: '请输入车牌号',
+        icon: 'none'
+      })
       return
     }
-
+    
     if (blueOut === 0 && blueIn === 0 && redOut === 0 && redIn === 0 && !remark && sendBlueOut === 0 && sendRedOut === 0) {
-      wx.showToast({ title: '请输入数量或备注', icon: 'none' })
+      wx.showToast({
+        title: '请输入数量或备注',
+        icon: 'none'
+      })
       return
     }
 
@@ -355,22 +360,27 @@ Page({
         blueIn: 0,
         redOut: 0,
         redIn: 0,
-        remark: '',
-        selectedRouteIndex: 0,
-        selectedPlateIndex: 0
+        remark: ''
       })
-
+      
       this.loadData()
-
-      wx.showToast({ title: '记录成功', icon: 'success' })
+      
+      wx.showToast({
+        title: '记录成功',
+        icon: 'success'
+      })
     })
   },
 
   goToHistory() {
-    wx.navigateTo({ url: '/pages/history/history' })
+    wx.navigateTo({
+      url: '/pages/history/history'
+    })
   },
 
   goToStatistics() {
-    wx.navigateTo({ url: '/pages/statistics/statistics' })
+    wx.navigateTo({
+      url: '/pages/statistics/statistics'
+    })
   }
 })
