@@ -279,6 +279,110 @@
   background-color: #EF5350;
 }
 
+.group-list-card {
+  padding: 24rpx;
+  margin-top: 20rpx;
+}
+
+.group-list-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #333333;
+  margin-bottom: 20rpx;
+  padding-bottom: 16rpx;
+  border-bottom: 1rpx solid #EEEEEE;
+}
+
+.group-item {
+  background-color: #FAFAFA;
+  border-radius: 12rpx;
+  margin-bottom: 12rpx;
+  overflow: hidden;
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  padding: 20rpx;
+  background-color: #FFFFFF;
+}
+
+.group-info {
+  flex: 1;
+}
+
+.group-route {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #333333;
+  margin-bottom: 4rpx;
+}
+
+.group-plate {
+  font-size: 24rpx;
+  color: #666666;
+}
+
+.group-summary {
+  display: flex;
+  gap: 16rpx;
+  font-size: 26rpx;
+  margin-right: 16rpx;
+}
+
+.group-arrow {
+  font-size: 20rpx;
+  color: #999999;
+  transition: transform 0.3s;
+}
+
+.group-arrow.expanded {
+  transform: rotate(180deg);
+}
+
+.group-detail {
+  padding: 0 20rpx 20rpx;
+  background-color: #FAFAFA;
+}
+
+.group-detail.hidden {
+  display: none;
+}
+
+.group-row {
+  display: flex;
+  justify-content: space-between;
+  background-color: #FFFFFF;
+  border-radius: 8rpx;
+  padding: 16rpx;
+}
+
+.group-cell {
+  flex: 1;
+  text-align: center;
+}
+
+.cell-label {
+  font-size: 22rpx;
+  color: #999999;
+  margin-bottom: 8rpx;
+}
+
+.cell-values {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+  font-size: 24rpx;
+}
+
+.blue-text {
+  color: #1976D2;
+}
+
+.red-text {
+  color: #D32F2F;
+}
+
 .input-card {
   padding: 24rpx;
 }

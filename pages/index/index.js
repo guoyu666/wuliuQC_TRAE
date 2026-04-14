@@ -33,7 +33,9 @@ Page({
     barRedIn: 4,
     animationData: null,
     showBlueSection: true,
-    showRedSection: true
+    showRedSection: true,
+    groupedList: [],
+    collapsedGroups: {}
   },
 
   onLoad() {
@@ -72,6 +74,31 @@ Page({
         todayRedIn += r.redIn || 0
       })
 
+      const grouped = {}
+      dayRecords.forEach(r => {
+        const key = `${r.routeName || '未知'}_${r.plateNumber || '未知'}`
+        if (!grouped[key]) {
+          grouped[key] = {
+            routeName: r.routeName || '未知',
+            plateNumber: r.plateNumber || '未知',
+            sendBlueOut: 0,
+            sendRedOut: 0,
+            blueOut: 0,
+            blueIn: 0,
+            redOut: 0,
+            redIn: 0
+          }
+        }
+        grouped[key].sendBlueOut += r.sendBlueOut || 0
+        grouped[key].sendRedOut += r.sendRedOut || 0
+        grouped[key].blueOut += r.blueOut || 0
+        grouped[key].blueIn += r.blueIn || 0
+        grouped[key].redOut += r.redOut || 0
+        grouped[key].redIn += r.redIn || 0
+      })
+
+      const groupedList = Object.values(grouped)
+      
       const maxValue = Math.max(todayBlueOut, todayBlueIn, todayRedOut, todayRedIn, 1)
       const maxHeight = 160
 
@@ -89,7 +116,8 @@ Page({
         barBlueOut,
         barBlueIn,
         barRedOut,
-        barRedIn
+        barRedIn,
+        groupedList
       })
     })
   },
@@ -377,6 +405,13 @@ Page({
 
   toggleRedSection() {
     this.setData({ showRedSection: !this.data.showRedSection })
+  },
+
+  toggleGroup(e) {
+    const key = e.currentTarget.dataset.key
+    const collapsedGroups = { ...this.data.collapsedGroups }
+    collapsedGroups[key] = !collapsedGroups[key]
+    this.setData({ collapsedGroups })
   },
 
   deleteSelectedPlate() {

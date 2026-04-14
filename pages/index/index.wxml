@@ -109,6 +109,48 @@
     </view>
   </view>
 
+  <view class="group-list-card card" wx:if="{{groupedList.length > 0}}">
+    <view class="group-list-title">线路分组明细</view>
+    <view class="group-item" wx:for="{{groupedList}}" wx:key="{{item.routeName}}_{{item.plateNumber}}">
+      <view class="group-header" bindtap="toggleGroup" data-key="{{item.routeName}}_{{item.plateNumber}}">
+        <view class="group-info">
+          <view class="group-route">{{item.routeName}}</view>
+          <view class="group-plate">{{item.plateNumber}}</view>
+        </view>
+        <view class="group-summary">
+          <text class="blue-text">蓝{{item.blueOut}}/{{item.blueIn}}</text>
+          <text class="red-text">红{{item.redOut}}/{{item.redIn}}</text>
+        </view>
+        <view class="group-arrow {{collapsedGroups[item.routeName + '_' + item.plateNumber] ? '' : 'expanded'}}">▼</view>
+      </view>
+      <view class="group-detail {{collapsedGroups[item.routeName + '_' + item.plateNumber] ? 'hidden' : ''}}">
+        <view class="group-row">
+          <view class="group-cell">
+            <view class="cell-label">物流发出</view>
+            <view class="cell-values">
+              <text class="blue-text">蓝{{item.sendBlueOut}}</text>
+              <text class="red-text">红{{item.sendRedOut}}</text>
+            </view>
+          </view>
+          <view class="group-cell">
+            <view class="cell-label">车辆发出</view>
+            <view class="cell-values">
+              <text class="blue-text">蓝{{item.blueOut}}</text>
+              <text class="red-text">红{{item.redOut}}</text>
+            </view>
+          </view>
+          <view class="group-cell">
+            <view class="cell-label">车辆收回</view>
+            <view class="cell-values">
+              <text class="blue-text">蓝{{item.blueIn}}</text>
+              <text class="red-text">红{{item.redIn}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+
   <view class="input-card card">
     <view class="section-title">新增记录</view>
 
