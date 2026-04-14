@@ -1,5 +1,6 @@
 const util = require('../../utils/util.js')
 const db = require('../../utils/db.js')
+const feedback = require('../../utils/feedback.js')
 
 Page({
   data: {
@@ -536,6 +537,7 @@ Page({
       
       this.loadData()
       
+      feedback.success()
       wx.showToast({
         title: '记录成功',
         icon: 'success'

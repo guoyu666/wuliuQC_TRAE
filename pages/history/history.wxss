@@ -455,6 +455,37 @@
   color: #D32F2F;
 }
 
+.edit-picker-row {
+  display: flex;
+  gap: 12rpx;
+}
+
+.edit-picker-btn {
+  flex: 1;
+  height: 72rpx;
+  line-height: 72rpx;
+  padding: 0 16rpx;
+  font-size: 26rpx;
+  color: #999999;
+  background-color: #F5F5F5;
+  border-radius: 8rpx;
+  box-sizing: border-box;
+}
+
+.edit-picker-btn.has-value {
+  color: #333333;
+}
+
+.edit-inline-input {
+  width: 100rpx;
+  height: 72rpx;
+  padding: 0 12rpx;
+  font-size: 24rpx;
+  background-color: #E3F2FD;
+  border-radius: 8rpx;
+  box-sizing: border-box;
+}
+
 .edit-row {
   display: flex;
   justify-content: space-between;

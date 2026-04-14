@@ -1,5 +1,6 @@
 const util = require('../../utils/util.js')
 const db = require('../../utils/db.js')
+const feedback = require('../../utils/feedback.js')
 
 Page({
   data: {
@@ -12,6 +13,12 @@ Page({
     editRecordId: '',
     editRouteName: '',
     editPlateNumber: '',
+    editRouteIndex: -1,
+    editPlateIndex: -1,
+    newEditRouteName: '',
+    newEditPlateNumber: '',
+    routeList: [],
+    plateList: [],
     editSendBlueOut: 0,
     editSendRedOut: 0,
     editBlueOut: 0,
@@ -41,6 +48,10 @@ Page({
   },
 
   onLoad() {
+    this.setData({
+      routeList: db.getRoutes(),
+      plateList: db.getPlates()
+    })
     this.loadRecords()
   },
 
@@ -132,11 +143,18 @@ Page({
 
     db.getRecordById(id).then(record => {
       if (record) {
+        const routeList = this.data.routeList
+        const plateList = this.data.plateList
+        const routeIndex = routeList.indexOf(record.routeName)
+        const plateIndex = plateList.indexOf(record.plateNumber)
+        
         this.setData({
           showDataModal: true,
           editRecordId: id,
           editRouteName: record.routeName || '',
           editPlateNumber: record.plateNumber || '',
+          editRouteIndex: routeIndex >= 0 ? routeIndex : -1,
+          editPlateIndex: plateIndex >= 0 ? plateIndex : -1,
           editSendBlueOut: record.sendBlueOut || 0,
           editSendRedOut: record.sendRedOut || 0,
           editBlueOut: record.blueOut || 0,
@@ -154,6 +172,10 @@ Page({
       editRecordId: '',
       editRouteName: '',
       editPlateNumber: '',
+      editRouteIndex: -1,
+      editPlateIndex: -1,
+      newEditRouteName: '',
+      newEditPlateNumber: '',
       editSendBlueOut: 0,
       editSendRedOut: 0,
       editBlueOut: 0,
@@ -163,12 +185,72 @@ Page({
     })
   },
 
-  onEditRouteNameChange(e) {
-    this.setData({ editRouteName: e.detail.value })
+  onEditRouteChange(e) {
+    const index = e.detail.value
+    const routeName = this.data.routeList[index]
+    this.setData({
+      editRouteIndex: index,
+      editRouteName: routeName || ''
+    })
   },
 
-  onEditPlateNumberChange(e) {
-    this.setData({ editPlateNumber: e.detail.value })
+  onEditPlateChange(e) {
+    const index = e.detail.value
+    const plateNumber = this.data.plateList[index]
+    this.setData({
+      editPlateIndex: index,
+      editPlateNumber: plateNumber || ''
+    })
+  },
+
+  onNewEditRouteNameInput(e) {
+    this.setData({ newEditRouteName: e.detail.value })
+  },
+
+  onNewEditPlateNumberInput(e) {
+    this.setData({ newEditPlateNumber: e.detail.value })
+  },
+
+  addNewEditRoute() {
+    const { newEditRouteName, routeList } = this.data
+    if (!newEditRouteName || !newEditRouteName.trim()) return
+    const trimmed = newEditRouteName.trim()
+    if (!routeList.includes(trimmed)) {
+      const updated = db.addRoute(trimmed)
+      this.setData({
+        routeList: updated,
+        editRouteIndex: updated.length - 1,
+        editRouteName: trimmed,
+        newEditRouteName: ''
+      })
+    } else {
+      this.setData({
+        editRouteIndex: routeList.indexOf(trimmed),
+        editRouteName: trimmed,
+        newEditRouteName: ''
+      })
+    }
+  },
+
+  addNewEditPlate() {
+    const { newEditPlateNumber, plateList } = this.data
+    if (!newEditPlateNumber || !newEditPlateNumber.trim()) return
+    const trimmed = newEditPlateNumber.trim()
+    if (!plateList.includes(trimmed)) {
+      const updated = db.addPlate(trimmed)
+      this.setData({
+        plateList: updated,
+        editPlateIndex: updated.length - 1,
+        editPlateNumber: trimmed,
+        newEditPlateNumber: ''
+      })
+    } else {
+      this.setData({
+        editPlateIndex: plateList.indexOf(trimmed),
+        editPlateNumber: trimmed,
+        newEditPlateNumber: ''
+      })
+    }
   },
 
   onEditSendBlueOutChange(e) {
@@ -218,6 +300,7 @@ Page({
     }).then(() => {
       this.hideDataModal()
       this.loadRecords()
+      feedback.success()
       wx.showToast({
         title: '保存成功',
         icon: 'success'
@@ -252,6 +335,7 @@ Page({
     db.updateRecord(editRecordId, { remark: editRemark.trim() }).then(() => {
       this.hideRemarkModal()
       this.loadRecords()
+      feedback.success()
       wx.showToast({
         title: '保存成功',
         icon: 'success'
@@ -410,6 +494,7 @@ Page({
         if (res.confirm) {
           db.deleteRecord(id).then(() => {
             this.loadRecords()
+            feedback.delete()
             wx.showToast({
               title: '已删除',
               icon: 'success'

@@ -151,11 +151,25 @@
     <view class="modal-body">
       <view class="edit-group">
         <view class="edit-label">线路名称</view>
-        <input class="edit-text-input" placeholder="请输入线路名称" value="{{editRouteName}}" bindinput="onEditRouteNameChange" />
+        <view class="edit-picker-row">
+          <picker mode="selector" range="{{routeList}}" value="{{editRouteIndex}}" bindchange="onEditRouteChange">
+            <view class="edit-picker-btn {{editRouteIndex >= 0 ? 'has-value' : ''}}">
+              {{editRouteIndex >= 0 ? routeList[editRouteIndex] : '选择线路'}}
+            </view>
+          </picker>
+          <input class="edit-inline-input" placeholder="+新增" value="{{newEditRouteName}}" bindinput="onNewEditRouteNameInput" bindconfirm="addNewEditRoute" confirm-type="done" />
+        </view>
       </view>
       <view class="edit-group">
         <view class="edit-label">车牌号</view>
-        <input class="edit-text-input" placeholder="请输入车牌号" value="{{editPlateNumber}}" bindinput="onEditPlateNumberChange" />
+        <view class="edit-picker-row">
+          <picker mode="selector" range="{{plateList}}" value="{{editPlateIndex}}" bindchange="onEditPlateChange">
+            <view class="edit-picker-btn {{editPlateIndex >= 0 ? 'has-value' : ''}}">
+              {{editPlateIndex >= 0 ? plateList[editPlateIndex] : '选择车牌'}}
+            </view>
+          </picker>
+          <input class="edit-inline-input" placeholder="+新增" value="{{newEditPlateNumber}}" bindinput="onNewEditPlateNumberInput" bindconfirm="addNewEditPlate" confirm-type="done" />
+        </view>
       </view>
       <view class="edit-group">
         <view class="edit-label blue">物流发出</view>
