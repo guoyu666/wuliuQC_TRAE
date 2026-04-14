@@ -30,6 +30,16 @@
     </view>
   </view>
 
+  <view class="route-filter">
+    <picker mode="selector" range="{{routeList}}" value="{{routeIndex}}" bindchange="onRouteChange">
+      <view class="route-picker-btn">
+        <text class="route-icon">🛤️</text>
+        <text class="route-text">{{selectedRoute || '全部线路'}}</text>
+        <text class="route-arrow">▼</text>
+      </view>
+    </picker>
+  </view>
+
   <view class="summary-card card">
     <view class="summary-title">{{currentTab === 'month' ? selectedMonth + '月' : selectedYear + '年'}} 收发汇总</view>
     <view class="summary-grid">

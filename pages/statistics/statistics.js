@@ -6,6 +6,9 @@ Page({
     currentTab: 'month',
     selectedMonth: '',
     selectedYear: '',
+    routeList: [],
+    selectedRoute: '',
+    routeIndex: 0,
     totalBlueOut: 0,
     totalBlueIn: 0,
     totalRedOut: 0,
@@ -31,7 +34,8 @@ Page({
     
     this.setData({
       selectedMonth: `${year}-${month}`,
-      selectedYear: year.toString()
+      selectedYear: year.toString(),
+      routeList: ['全部', ...db.getRoutes()]
     })
     
     this.loadData()
@@ -45,6 +49,21 @@ Page({
         this.loadData()
         this.animateBarsIn()
       }, 400)
+    })
+  },
+
+  onRouteChange(e) {
+    const index = e.detail.value
+    const route = this.data.routeList[index]
+    this.setData({ 
+      selectedRoute: route === '全部' ? '' : route,
+      routeIndex: index
+    }, () => {
+      this.animateBars()
+      setTimeout(() => {
+        this.loadData()
+        this.animateBarsIn()
+      }, 200)
     })
   },
 
@@ -160,16 +179,20 @@ Page({
   },
 
   loadMonthData(records) {
-    const { selectedMonth } = this.data
+    const { selectedMonth, selectedRoute } = this.data
     
-    const monthRecords = records.filter(r => {
+    let filteredRecords = records.filter(r => {
       return r.date.startsWith(selectedMonth)
     })
+    
+    if (selectedRoute) {
+      filteredRecords = filteredRecords.filter(r => r.routeName === selectedRoute)
+    }
     
     let totalBlueOut = 0, totalBlueIn = 0, totalRedOut = 0, totalRedIn = 0
     const dailyMap = {}
     
-    monthRecords.forEach(r => {
+    filteredRecords.forEach(r => {
       totalBlueOut += r.blueOut || 0
       totalBlueIn += r.blueIn || 0
       totalRedOut += r.redOut || 0
@@ -209,16 +232,20 @@ Page({
   },
 
   loadYearData(records) {
-    const { selectedYear } = this.data
+    const { selectedYear, selectedRoute } = this.data
     
-    const yearRecords = records.filter(r => {
+    let filteredRecords = records.filter(r => {
       return r.date.startsWith(selectedYear)
     })
+    
+    if (selectedRoute) {
+      filteredRecords = filteredRecords.filter(r => r.routeName === selectedRoute)
+    }
     
     let totalBlueOut = 0, totalBlueIn = 0, totalRedOut = 0, totalRedIn = 0
     const monthlyMap = {}
     
-    yearRecords.forEach(r => {
+    filteredRecords.forEach(r => {
       totalBlueOut += r.blueOut || 0
       totalBlueIn += r.blueIn || 0
       totalRedOut += r.redOut || 0
