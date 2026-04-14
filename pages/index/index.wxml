@@ -112,21 +112,41 @@
   <view class="input-card card">
     <view class="section-title">新增记录</view>
 
-    <view class="input-group">
-      <view class="input-label">线路名称</view>
-      <input class="text-input" placeholder="请输入线路名称（如：京沪线）" value="{{routeName}}" bindinput="onRouteNameChange" />
+    <view class="input-row-2">
+      <view class="input-group flex-1">
+        <view class="input-label">线路名称</view>
+        <picker mode="selector" range="{{routeOptions}}" value="{{selectedRouteIndex}}" bindchange="onRouteChange">
+          <view class="picker-input">
+            <text class="{{routeName ? '' : 'placeholder'}}">{{routeName || '请选择线路'}}</text>
+            <text class="picker-arrow">▼</text>
+          </view>
+        </picker>
+      </view>
+      <view class="input-group flex-1">
+        <view class="input-label">车牌号</view>
+        <picker mode="selector" range="{{plateOptions}}" value="{{selectedPlateIndex}}" bindchange="onPlateChange">
+          <view class="picker-input">
+            <text class="{{plateNumber ? '' : 'placeholder'}}">{{plateNumber || '请选择车牌'}}</text>
+            <text class="picker-arrow">▼</text>
+          </view>
+        </picker>
+      </view>
     </view>
+    <view class="preset-hint">* 可在右下角管理预设线路和车牌</view>
 
-    <view class="input-group">
-      <view class="input-label">车牌号</view>
-      <input class="text-input" placeholder="请输入车牌号（如：京A12345）" value="{{plateNumber}}" bindinput="onPlateNumberChange" />
-    </view>
-
-    <view class="input-group">
-      <view class="input-label blue-label">蓝色框子</view>
+    <view class="input-section">
+      <view class="input-section-title blue-title">蓝色框子</view>
       <view class="input-row">
         <view class="input-item">
-          <view class="input-name">发出</view>
+          <view class="input-name">物流发出</view>
+          <view class="stepper">
+            <view class="stepper-btn" bindtap="adjustSendValue" data-field="sendBlueOut" data-delta="-1">-</view>
+            <input class="stepper-input" type="number" value="{{sendBlueOut}}" bindinput="onSendBlueOutChange" />
+            <view class="stepper-btn" bindtap="adjustSendValue" data-field="sendBlueOut" data-delta="1">+</view>
+          </view>
+        </view>
+        <view class="input-item">
+          <view class="input-name">车辆发出</view>
           <view class="stepper">
             <view class="stepper-btn" bindtap="adjustValue" data-field="blueOut" data-delta="-1">-</view>
             <input class="stepper-input" type="number" value="{{blueOut}}" bindinput="onBlueOutChange" />
@@ -134,7 +154,7 @@
           </view>
         </view>
         <view class="input-item">
-          <view class="input-name">收回</view>
+          <view class="input-name">车辆收回</view>
           <view class="stepper">
             <view class="stepper-btn" bindtap="adjustValue" data-field="blueIn" data-delta="-1">-</view>
             <input class="stepper-input" type="number" value="{{blueIn}}" bindinput="onBlueInChange" />
@@ -144,11 +164,19 @@
       </view>
     </view>
 
-    <view class="input-group">
-      <view class="input-label red-label">红色框子</view>
+    <view class="input-section">
+      <view class="input-section-title red-title">红色框子</view>
       <view class="input-row">
         <view class="input-item">
-          <view class="input-name">发出</view>
+          <view class="input-name">物流发出</view>
+          <view class="stepper">
+            <view class="stepper-btn" bindtap="adjustSendValue" data-field="sendRedOut" data-delta="-1">-</view>
+            <input class="stepper-input" type="number" value="{{sendRedOut}}" bindinput="onSendRedOutChange" />
+            <view class="stepper-btn" bindtap="adjustSendValue" data-field="sendRedOut" data-delta="1">+</view>
+          </view>
+        </view>
+        <view class="input-item">
+          <view class="input-name">车辆发出</view>
           <view class="stepper">
             <view class="stepper-btn" bindtap="adjustValue" data-field="redOut" data-delta="-1">-</view>
             <input class="stepper-input" type="number" value="{{redOut}}" bindinput="onRedOutChange" />
@@ -156,7 +184,7 @@
           </view>
         </view>
         <view class="input-item">
-          <view class="input-name">收回</view>
+          <view class="input-name">车辆收回</view>
           <view class="stepper">
             <view class="stepper-btn" bindtap="adjustValue" data-field="redIn" data-delta="-1">-</view>
             <input class="stepper-input" type="number" value="{{redIn}}" bindinput="onRedInChange" />
@@ -172,10 +200,50 @@
     </view>
   </view>
 
-  <view class="btn-primary" bindtap="submitRecord">提交记录</view>
+  <view class="btn-primary submit-btn" bindtap="submitRecord">提交记录</view>
+
+  <view class="preset-bar">
+    <view class="preset-btn" bindtap="showPresetModal">⚙️ 预设管理</view>
+  </view>
 
   <view class="btn-row">
     <view class="btn-secondary" bindtap="goToStatistics">统计报表</view>
     <view class="btn-secondary" bindtap="goToHistory">历史记录</view>
+  </view>
+
+  <view class="modal-mask" wx:if="{{showPresetModal}}" bindtap="hidePresetModal"></view>
+  <view class="modal-content preset-modal" wx:if="{{showPresetModal}}">
+    <view class="modal-header">预设管理</view>
+    <view class="modal-body">
+      <view class="preset-section">
+        <view class="preset-section-title">线路预设</view>
+        <view class="preset-list">
+          <view class="preset-item" wx:for="{{presetRoutes}}" wx:key="{{item}}">
+            <text>{{item}}</text>
+            <view class="preset-delete" catchtap="deletePresetRoute" data-route="{{item}}">×</view>
+          </view>
+        </view>
+        <view class="preset-add">
+          <input class="preset-input" placeholder="输入新线路" value="{{newRoute}}" bindinput="onNewRouteChange" />
+          <view class="preset-add-btn" bindtap="addPresetRoute">添加</view>
+        </view>
+      </view>
+      <view class="preset-section">
+        <view class="preset-section-title">车牌预设</view>
+        <view class="preset-list">
+          <view class="preset-item" wx:for="{{presetPlates}}" wx:key="{{item}}">
+            <text>{{item}}</text>
+            <view class="preset-delete" catchtap="deletePresetPlate" data-plate="{{item}}">×</view>
+          </view>
+        </view>
+        <view class="preset-add">
+          <input class="preset-input" placeholder="输入新车牌" value="{{newPlate}}" bindinput="onNewPlateChange" />
+          <view class="preset-add-btn" bindtap="addPresetPlate">添加</view>
+        </view>
+      </view>
+    </view>
+    <view class="modal-footer">
+      <view class="modal-btn confirm" bindtap="hidePresetModal">关闭</view>
+    </view>
   </view>
 </view>

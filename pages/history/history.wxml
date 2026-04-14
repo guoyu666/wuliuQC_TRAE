@@ -14,7 +14,9 @@
 
   <view class="record-group" wx:for="{{displayGroupedRecords}}" wx:key="date">
     <view class="date-header">
-      <view class="date-text">{{item.date}}</view>
+      <view class="date-line"></view>
+      <view class="date-badge">{{item.date}}</view>
+      <view class="date-line"></view>
     </view>
     <view class="summary-card card">
       <view class="summary-row">
