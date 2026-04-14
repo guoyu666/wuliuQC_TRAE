@@ -9,6 +9,12 @@ Page({
     quickType: 'today',
     routeName: '',
     plateNumber: '',
+    routeList: [],
+    plateList: [],
+    routeIndex: -1,
+    plateIndex: -1,
+    newRouteName: '',
+    newPlateNumber: '',
     blueOut: 0,
     blueIn: 0,
     redOut: 0,
@@ -25,7 +31,9 @@ Page({
     barBlueIn: 4,
     barRedOut: 4,
     barRedIn: 4,
-    animationData: null
+    animationData: null,
+    showBlueSection: true,
+    showRedSection: true
   },
 
   onLoad() {
@@ -36,7 +44,9 @@ Page({
       selectedDate: util.formatDate(today),
       today: util.formatDate(today),
       monthStart: util.formatDate(monthStart),
-      quickType: 'today'
+      quickType: 'today',
+      routeList: db.getRoutes(),
+      plateList: db.getPlates()
     })
     this.loadData()
   },
@@ -260,12 +270,138 @@ Page({
     }, 400)
   },
 
-  onRouteNameChange(e) {
-    this.setData({ routeName: e.detail.value })
+  onRouteChange(e) {
+    const index = e.detail.value
+    const routeName = this.data.routeList[index]
+    this.setData({
+      routeIndex: index,
+      routeName: routeName || ''
+    })
   },
 
-  onPlateNumberChange(e) {
-    this.setData({ plateNumber: e.detail.value })
+  onPlateChange(e) {
+    const index = e.detail.value
+    const plateNumber = this.data.plateList[index]
+    this.setData({
+      plateIndex: index,
+      plateNumber: plateNumber || ''
+    })
+  },
+
+  onNewRouteNameInput(e) {
+    this.setData({ newRouteName: e.detail.value })
+  },
+
+  onNewPlateNumberInput(e) {
+    this.setData({ newPlateNumber: e.detail.value })
+  },
+
+  addNewRoute() {
+    const { newRouteName, routeList } = this.data
+    if (!newRouteName || !newRouteName.trim()) return
+    const trimmed = newRouteName.trim()
+    if (!routeList.includes(trimmed)) {
+      const updated = db.addRoute(trimmed)
+      this.setData({
+        routeList: updated,
+        routeIndex: updated.length - 1,
+        routeName: trimmed,
+        newRouteName: ''
+      })
+    } else {
+      this.setData({
+        routeIndex: routeList.indexOf(trimmed),
+        routeName: trimmed,
+        newRouteName: ''
+      })
+    }
+    wx.showToast({
+      title: '线路已添加',
+      icon: 'success'
+    })
+  },
+
+  addNewPlate() {
+    const { newPlateNumber, plateList } = this.data
+    if (!newPlateNumber || !newPlateNumber.trim()) return
+    const trimmed = newPlateNumber.trim()
+    if (!plateList.includes(trimmed)) {
+      const updated = db.addPlate(trimmed)
+      this.setData({
+        plateList: updated,
+        plateIndex: updated.length - 1,
+        plateNumber: trimmed,
+        newPlateNumber: ''
+      })
+    } else {
+      this.setData({
+        plateIndex: plateList.indexOf(trimmed),
+        plateNumber: trimmed,
+        newPlateNumber: ''
+      })
+    }
+    wx.showToast({
+      title: '车牌已添加',
+      icon: 'success'
+    })
+  },
+
+  deleteSelectedRoute() {
+    const { routeIndex, routeList } = this.data
+    if (routeIndex < 0) return
+    const routeName = routeList[routeIndex]
+    
+    wx.showModal({
+      title: '确认删除',
+      content: `确定要删除线路"${routeName}"吗？`,
+      success: (res) => {
+        if (res.confirm) {
+          const updated = db.deleteRoute(routeName)
+          this.setData({
+            routeList: updated,
+            routeIndex: -1,
+            routeName: ''
+          })
+          wx.showToast({
+            title: '已删除',
+            icon: 'success'
+          })
+        }
+      }
+    })
+  },
+
+  toggleBlueSection() {
+    this.setData({ showBlueSection: !this.data.showBlueSection })
+  },
+
+  toggleRedSection() {
+    this.setData({ showRedSection: !this.data.showRedSection })
+  },
+
+  deleteSelectedPlate() {
+    const { plateIndex, plateList } = this.data
+    if (plateIndex < 0) return
+    const plateNumber = plateList[plateIndex]
+    
+    wx.showModal({
+      title: '确认删除',
+      content: `确定要删除车牌"${plateNumber}"吗？`,
+      success: (res) => {
+        if (res.confirm) {
+          const updated = db.deletePlate(plateNumber)
+          this.setData({
+            plateList: updated,
+            plateIndex: -1,
+            plateNumber: ''
+          })
+          wx.showToast({
+            title: '已删除',
+            icon: 'success'
+          })
+        }
+      }
+    })
   },
 
   onBlueOutChange(e) {

@@ -1,4 +1,39 @@
 <view class="container">
+  <view class="search-bar">
+    <view class="search-input-wrap">
+      <text class="search-icon">🔍</text>
+      <input class="search-input" placeholder="搜索线路/车牌/备注" value="{{searchKeyword}}" bindinput="onSearchInput" bindconfirm="doSearch" confirm-type="search" />
+      <view class="clear-btn {{searchKeyword ? 'show' : ''}}" bindtap="clearSearch">×</view>
+    </view>
+    <view class="filter-btn" bindtap="toggleFilter">{{showFilter ? '收起' : '筛选'}}</view>
+  </view>
+
+  <view class="filter-panel {{showFilter ? 'show' : ''}}">
+    <view class="filter-row">
+      <picker mode="date" value="{{filterStartDate}}" start="2020-01-01" end="2099-12-31" bindchange="onFilterStartDateChange">
+        <view class="filter-item">
+          <view class="filter-label">开始日期</view>
+          <view class="filter-value {{filterStartDate ? 'has-value' : ''}}">{{filterStartDate || '不限'}}</view>
+        </view>
+      </picker>
+      <view class="filter-gap">至</view>
+      <picker mode="date" value="{{filterEndDate}}" start="2020-01-01" end="2099-12-31" bindchange="onFilterEndDateChange">
+        <view class="filter-item">
+          <view class="filter-label">结束日期</view>
+          <view class="filter-value {{filterEndDate ? 'has-value' : ''}}">{{filterEndDate || '不限'}}</view>
+        </view>
+      </picker>
+    </view>
+    <view class="filter-actions">
+      <view class="filter-reset" bindtap="resetFilter">重置</view>
+      <view class="filter-apply" bindtap="applyFilter">应用</view>
+    </view>
+  </view>
+
+  <view class="search-result-tip" wx:if="{{isSearching}}">
+    找到 {{filteredRecordCount}} 条记录
+  </view>
+
   <view class="export-bar">
     <view class="export-btn" bindtap="showExportModal">
       <text class="export-icon">📤</text>

@@ -22,6 +22,138 @@
   color: #999999;
 }
 
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 16rpx 0;
+  margin-bottom: 16rpx;
+}
+
+.search-input-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  background-color: #F5F5F5;
+  border-radius: 36rpx;
+  padding: 0 20rpx;
+  height: 72rpx;
+}
+
+.search-icon {
+  font-size: 28rpx;
+  margin-right: 12rpx;
+}
+
+.search-input {
+  flex: 1;
+  height: 72rpx;
+  font-size: 28rpx;
+}
+
+.clear-btn {
+  width: 40rpx;
+  height: 40rpx;
+  line-height: 40rpx;
+  text-align: center;
+  font-size: 32rpx;
+  color: #999999;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.clear-btn.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.filter-btn {
+  padding: 16rpx 24rpx;
+  font-size: 26rpx;
+  color: #1976D2;
+  background-color: #E3F2FD;
+  border-radius: 8rpx;
+}
+
+.filter-panel {
+  display: none;
+  background-color: #F5F5F5;
+  border-radius: 12rpx;
+  padding: 20rpx;
+  margin-bottom: 16rpx;
+}
+
+.filter-panel.show {
+  display: block;
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16rpx;
+}
+
+.filter-item {
+  flex: 1;
+  text-align: center;
+}
+
+.filter-label {
+  font-size: 22rpx;
+  color: #999999;
+  margin-bottom: 8rpx;
+}
+
+.filter-value {
+  font-size: 26rpx;
+  color: #333333;
+  padding: 12rpx;
+  background-color: #FFFFFF;
+  border-radius: 8rpx;
+}
+
+.filter-value.has-value {
+  color: #1976D2;
+}
+
+.filter-gap {
+  padding: 0 16rpx;
+  color: #999999;
+  font-size: 26rpx;
+}
+
+.filter-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx solid #E0E0E0;
+}
+
+.filter-reset {
+  padding: 12rpx 32rpx;
+  font-size: 26rpx;
+  color: #666666;
+  background-color: #FFFFFF;
+  border-radius: 8rpx;
+}
+
+.filter-apply {
+  padding: 12rpx 32rpx;
+  font-size: 26rpx;
+  color: #FFFFFF;
+  background-color: #1976D2;
+  border-radius: 8rpx;
+}
+
+.search-result-tip {
+  font-size: 24rpx;
+  color: #666666;
+  padding: 8rpx 0;
+  margin-bottom: 8rpx;
+}
+
 .export-bar {
   display: flex;
   justify-content: flex-end;

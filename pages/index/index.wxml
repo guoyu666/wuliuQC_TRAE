@@ -115,69 +115,95 @@
     <view class="input-row-2">
       <view class="input-group flex-1">
         <view class="input-label">线路名称</view>
-        <input class="text-input" placeholder="如：京沪线" value="{{routeName}}" bindinput="onRouteNameChange" />
+        <view class="picker-row">
+          <picker mode="selector" range="{{routeList}}" value="{{routeIndex}}" bindchange="onRouteChange">
+            <view class="picker-btn {{routeIndex >= 0 ? 'has-value' : ''}}">
+              {{routeIndex >= 0 ? routeList[routeIndex] : '选择线路'}}
+            </view>
+          </picker>
+          <input class="inline-input" placeholder="+新增" value="{{newRouteName}}" bindinput="onNewRouteNameInput" bindconfirm="addNewRoute" confirm-type="done" />
+          <view class="delete-btn {{routeIndex >= 0 ? 'show' : ''}}" bindtap="deleteSelectedRoute">×</view>
+        </view>
       </view>
       <view class="input-group flex-1">
         <view class="input-label">车牌号</view>
-        <input class="text-input" placeholder="如：京A12345" value="{{plateNumber}}" bindinput="onPlateNumberChange" />
-      </view>
-    </view>
-
-    <view class="input-section">
-      <view class="input-section-title blue-title">蓝色框子</view>
-      <view class="input-row">
-        <view class="input-item">
-          <view class="input-name">物流发出</view>
-          <view class="stepper">
-            <view class="stepper-btn" bindtap="adjustSendValue" data-field="sendBlueOut" data-delta="-1">-</view>
-            <input class="stepper-input" type="number" value="{{sendBlueOut}}" bindinput="onSendBlueOutChange" />
-            <view class="stepper-btn" bindtap="adjustSendValue" data-field="sendBlueOut" data-delta="1">+</view>
-          </view>
-        </view>
-        <view class="input-item">
-          <view class="input-name">车辆发出</view>
-          <view class="stepper">
-            <view class="stepper-btn" bindtap="adjustValue" data-field="blueOut" data-delta="-1">-</view>
-            <input class="stepper-input" type="number" value="{{blueOut}}" bindinput="onBlueOutChange" />
-            <view class="stepper-btn" bindtap="adjustValue" data-field="blueOut" data-delta="1">+</view>
-          </view>
-        </view>
-        <view class="input-item">
-          <view class="input-name">车辆收回</view>
-          <view class="stepper">
-            <view class="stepper-btn" bindtap="adjustValue" data-field="blueIn" data-delta="-1">-</view>
-            <input class="stepper-input" type="number" value="{{blueIn}}" bindinput="onBlueInChange" />
-            <view class="stepper-btn" bindtap="adjustValue" data-field="blueIn" data-delta="1">+</view>
-          </view>
+        <view class="picker-row">
+          <picker mode="selector" range="{{plateList}}" value="{{plateIndex}}" bindchange="onPlateChange">
+            <view class="picker-btn {{plateIndex >= 0 ? 'has-value' : ''}}">
+              {{plateIndex >= 0 ? plateList[plateIndex] : '选择车牌'}}
+            </view>
+          </picker>
+          <input class="inline-input" placeholder="+新增" value="{{newPlateNumber}}" bindinput="onNewPlateNumberInput" bindconfirm="addNewPlate" confirm-type="done" />
+          <view class="delete-btn {{plateIndex >= 0 ? 'show' : ''}}" bindtap="deleteSelectedPlate">×</view>
         </view>
       </view>
     </view>
 
-    <view class="input-section">
-      <view class="input-section-title red-title">红色框子</view>
-      <view class="input-row">
-        <view class="input-item">
-          <view class="input-name">物流发出</view>
-          <view class="stepper">
-            <view class="stepper-btn" bindtap="adjustSendValue" data-field="sendRedOut" data-delta="-1">-</view>
-            <input class="stepper-input" type="number" value="{{sendRedOut}}" bindinput="onSendRedOutChange" />
-            <view class="stepper-btn" bindtap="adjustSendValue" data-field="sendRedOut" data-delta="1">+</view>
+    <view class="collapse-section">
+      <view class="collapse-header" bindtap="toggleBlueSection">
+        <view class="collapse-title blue-title">蓝色框子</view>
+        <view class="collapse-arrow {{showBlueSection ? 'expanded' : ''}}">▼</view>
+      </view>
+      <view class="collapse-content {{showBlueSection ? 'expanded' : ''}}">
+        <view class="input-row">
+          <view class="input-item">
+            <view class="input-name">物流发出</view>
+            <view class="stepper">
+              <view class="stepper-btn" bindtap="adjustSendValue" data-field="sendBlueOut" data-delta="-1">-</view>
+              <input class="stepper-input" type="number" value="{{sendBlueOut}}" bindinput="onSendBlueOutChange" />
+              <view class="stepper-btn" bindtap="adjustSendValue" data-field="sendBlueOut" data-delta="1">+</view>
+            </view>
+          </view>
+          <view class="input-item">
+            <view class="input-name">车辆发出</view>
+            <view class="stepper">
+              <view class="stepper-btn" bindtap="adjustValue" data-field="blueOut" data-delta="-1">-</view>
+              <input class="stepper-input" type="number" value="{{blueOut}}" bindinput="onBlueOutChange" />
+              <view class="stepper-btn" bindtap="adjustValue" data-field="blueOut" data-delta="1">+</view>
+            </view>
+          </view>
+          <view class="input-item">
+            <view class="input-name">车辆收回</view>
+            <view class="stepper">
+              <view class="stepper-btn" bindtap="adjustValue" data-field="blueIn" data-delta="-1">-</view>
+              <input class="stepper-input" type="number" value="{{blueIn}}" bindinput="onBlueInChange" />
+              <view class="stepper-btn" bindtap="adjustValue" data-field="blueIn" data-delta="1">+</view>
+            </view>
           </view>
         </view>
-        <view class="input-item">
-          <view class="input-name">车辆发出</view>
-          <view class="stepper">
-            <view class="stepper-btn" bindtap="adjustValue" data-field="redOut" data-delta="-1">-</view>
-            <input class="stepper-input" type="number" value="{{redOut}}" bindinput="onRedOutChange" />
-            <view class="stepper-btn" bindtap="adjustValue" data-field="redOut" data-delta="1">+</view>
+      </view>
+    </view>
+
+    <view class="collapse-section">
+      <view class="collapse-header" bindtap="toggleRedSection">
+        <view class="collapse-title red-title">红色框子</view>
+        <view class="collapse-arrow {{showRedSection ? 'expanded' : ''}}">▼</view>
+      </view>
+      <view class="collapse-content {{showRedSection ? 'expanded' : ''}}">
+        <view class="input-row">
+          <view class="input-item">
+            <view class="input-name">物流发出</view>
+            <view class="stepper">
+              <view class="stepper-btn" bindtap="adjustSendValue" data-field="sendRedOut" data-delta="-1">-</view>
+              <input class="stepper-input" type="number" value="{{sendRedOut}}" bindinput="onSendRedOutChange" />
+              <view class="stepper-btn" bindtap="adjustSendValue" data-field="sendRedOut" data-delta="1">+</view>
+            </view>
           </view>
-        </view>
-        <view class="input-item">
-          <view class="input-name">车辆收回</view>
-          <view class="stepper">
-            <view class="stepper-btn" bindtap="adjustValue" data-field="redIn" data-delta="-1">-</view>
-            <input class="stepper-input" type="number" value="{{redIn}}" bindinput="onRedInChange" />
-            <view class="stepper-btn" bindtap="adjustValue" data-field="redIn" data-delta="1">+</view>
+          <view class="input-item">
+            <view class="input-name">车辆发出</view>
+            <view class="stepper">
+              <view class="stepper-btn" bindtap="adjustValue" data-field="redOut" data-delta="-1">-</view>
+              <input class="stepper-input" type="number" value="{{redOut}}" bindinput="onRedOutChange" />
+              <view class="stepper-btn" bindtap="adjustValue" data-field="redOut" data-delta="1">+</view>
+            </view>
+          </view>
+          <view class="input-item">
+            <view class="input-name">车辆收回</view>
+            <view class="stepper">
+              <view class="stepper-btn" bindtap="adjustValue" data-field="redIn" data-delta="-1">-</view>
+              <input class="stepper-input" type="number" value="{{redIn}}" bindinput="onRedInChange" />
+              <view class="stepper-btn" bindtap="adjustValue" data-field="redIn" data-delta="1">+</view>
+            </view>
           </view>
         </view>
       </view>

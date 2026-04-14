@@ -31,7 +31,13 @@ Page({
     currentPage: 1,
     pageSize: 10,
     hasMore: true,
-    totalCount: 0
+    totalCount: 0,
+    searchKeyword: '',
+    isSearching: false,
+    filteredRecordCount: 0,
+    showFilter: false,
+    filterStartDate: '',
+    filterEndDate: ''
   },
 
   onLoad() {
@@ -48,7 +54,9 @@ Page({
   },
 
   onReachBottom() {
-    this.loadMore()
+    if (!this.data.isSearching) {
+      this.loadMore()
+    }
   },
 
   loadRecords() {
@@ -409,6 +417,83 @@ Page({
           })
         }
       }
+    })
+  },
+
+  onSearchInput(e) {
+    this.setData({ searchKeyword: e.detail.value })
+  },
+
+  doSearch() {
+    this.performSearch()
+  },
+
+  clearSearch() {
+    this.setData({
+      searchKeyword: '',
+      isSearching: false
+    }, () => {
+      this.loadRecords()
+    })
+  },
+
+  toggleFilter() {
+    this.setData({ showFilter: !this.data.showFilter })
+  },
+
+  onFilterStartDateChange(e) {
+    this.setData({ filterStartDate: e.detail.value })
+  },
+
+  onFilterEndDateChange(e) {
+    this.setData({ filterEndDate: e.detail.value })
+  },
+
+  resetFilter() {
+    this.setData({
+      filterStartDate: '',
+      filterEndDate: ''
+    })
+  },
+
+  applyFilter() {
+    this.setData({ showFilter: false })
+    this.performSearch()
+  },
+
+  performSearch() {
+    const { records, searchKeyword, filterStartDate, filterEndDate } = this.data
+    
+    let filtered = records
+    
+    if (searchKeyword) {
+      const keyword = searchKeyword.toLowerCase()
+      filtered = filtered.filter(r => {
+        return (r.routeName && r.routeName.toLowerCase().includes(keyword)) ||
+               (r.plateNumber && r.plateNumber.toLowerCase().includes(keyword)) ||
+               (r.remark && r.remark.toLowerCase().includes(keyword))
+      })
+    }
+    
+    if (filterStartDate) {
+      filtered = filtered.filter(r => r.date >= filterStartDate)
+    }
+    
+    if (filterEndDate) {
+      filtered = filtered.filter(r => r.date <= filterEndDate)
+    }
+    
+    const grouped = this.groupByDate(filtered)
+    const displayGroupedRecords = grouped.slice(0, this.data.pageSize)
+    const hasMore = grouped.length > this.data.pageSize
+    
+    this.setData({
+      isSearching: searchKeyword || filterStartDate || filterEndDate,
+      filteredRecordCount: filtered.length,
+      groupedRecords: grouped,
+      displayGroupedRecords: displayGroupedRecords,
+      currentPage: 1,
+      hasMore: hasMore
     })
   },
 

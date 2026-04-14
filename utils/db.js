@@ -300,6 +300,52 @@ function getSyncStatus() {
   }
 }
 
+function getRoutes() {
+  return wx.getStorageSync('routes') || []
+}
+
+function addRoute(routeName) {
+  if (!routeName || !routeName.trim()) return []
+  const routes = wx.getStorageSync('routes') || []
+  const trimmed = routeName.trim()
+  if (!routes.includes(trimmed)) {
+    routes.push(trimmed)
+    wx.setStorageSync('routes', routes)
+  }
+  return routes
+}
+
+function getPlates() {
+  return wx.getStorageSync('plates') || []
+}
+
+function addPlate(plateNumber) {
+  if (!plateNumber || !plateNumber.trim()) return []
+  const plates = wx.getStorageSync('plates') || []
+  const trimmed = plateNumber.trim()
+  if (!plates.includes(trimmed)) {
+    plates.push(trimmed)
+    wx.setStorageSync('plates', plates)
+  }
+  return plates
+}
+
+function deleteRoute(routeName) {
+  if (!routeName) return []
+  const routes = wx.getStorageSync('routes') || []
+  const filtered = routes.filter(r => r !== routeName)
+  wx.setStorageSync('routes', filtered)
+  return filtered
+}
+
+function deletePlate(plateNumber) {
+  if (!plateNumber) return []
+  const plates = wx.getStorageSync('plates') || []
+  const filtered = plates.filter(p => p !== plateNumber)
+  wx.setStorageSync('plates', filtered)
+  return filtered
+}
+
 module.exports = {
   initCloud,
   setOpenid,
@@ -314,5 +360,11 @@ module.exports = {
   updateRecord,
   getRecordById,
   syncRecords,
-  getSyncStatus
+  getSyncStatus,
+  getRoutes,
+  addRoute,
+  getPlates,
+  addPlate,
+  deleteRoute,
+  deletePlate
 }

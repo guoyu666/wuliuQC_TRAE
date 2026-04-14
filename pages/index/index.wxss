@@ -297,6 +297,44 @@
   padding-left: 8rpx;
 }
 
+.collapse-section {
+  margin-bottom: 16rpx;
+  background-color: #FAFAFA;
+  border-radius: 12rpx;
+  overflow: hidden;
+}
+
+.collapse-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20rpx 24rpx;
+}
+
+.collapse-title {
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.collapse-arrow {
+  font-size: 20rpx;
+  color: #999999;
+  transition: transform 0.3s;
+}
+
+.collapse-arrow.expanded {
+  transform: rotate(180deg);
+}
+
+.collapse-content {
+  display: none;
+  padding: 0 24rpx 20rpx;
+}
+
+.collapse-content.expanded {
+  display: block;
+}
+
 .blue-title {
   color: #1976D2;
 }
@@ -410,10 +448,60 @@
   box-sizing: border-box;
 }
 
+.picker-row {
+  display: flex;
+  gap: 12rpx;
+}
+
+.picker-btn {
+  flex: 1;
+  height: 72rpx;
+  line-height: 72rpx;
+  padding: 0 16rpx;
+  font-size: 26rpx;
+  color: #999999;
+  background-color: #F5F5F5;
+  border-radius: 8rpx;
+  box-sizing: border-box;
+}
+
+.picker-btn.has-value {
+  color: #333333;
+}
+
+.inline-input {
+  width: 100rpx;
+  height: 72rpx;
+  padding: 0 12rpx;
+  font-size: 24rpx;
+  background-color: #E3F2FD;
+  border-radius: 8rpx;
+  box-sizing: border-box;
+}
+
+.delete-btn {
+  width: 48rpx;
+  height: 72rpx;
+  line-height: 72rpx;
+  text-align: center;
+  font-size: 32rpx;
+  color: #FFFFFF;
+  background-color: #CCCCCC;
+  border-radius: 8rpx;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.delete-btn.show {
+  background-color: #D32F2F;
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .remark-input {
   width: 100%;
-  min-height: 160rpx;
-  padding: 20rpx;
+  min-height: 40rpx;
+  padding: 12rpx;
   font-size: 28rpx;
   background-color: #F5F5F5;
   border-radius: 12rpx;
