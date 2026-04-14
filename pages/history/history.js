@@ -10,6 +10,10 @@ Page({
     showDataModal: false,
     showRemarkModal: false,
     editRecordId: '',
+    editRouteName: '',
+    editPlateNumber: '',
+    editSendBlueOut: 0,
+    editSendRedOut: 0,
     editBlueOut: 0,
     editBlueIn: 0,
     editRedOut: 0,
@@ -52,7 +56,7 @@ Page({
       const grouped = this.groupByDate(sortedRecords)
       const displayGroupedRecords = grouped.slice(0, this.data.pageSize)
       const hasMore = grouped.length > this.data.pageSize
-      
+
       this.setData({
         records: sortedRecords,
         groupedRecords: grouped,
@@ -66,22 +70,22 @@ Page({
 
   loadMore() {
     const { groupedRecords, currentPage, pageSize, hasMore } = this.data
-    
+
     if (!hasMore) return
-    
+
     const nextPage = currentPage + 1
     const startIndex = (nextPage - 1) * pageSize
     const endIndex = nextPage * pageSize
     const newGroups = groupedRecords.slice(startIndex, endIndex)
-    
+
     if (newGroups.length === 0) {
       this.setData({ hasMore: false })
       return
     }
-    
+
     const displayGroupedRecords = this.data.displayGroupedRecords.concat(newGroups)
     const stillHasMore = groupedRecords.length > nextPage * pageSize
-    
+
     this.setData({
       currentPage: nextPage,
       displayGroupedRecords: displayGroupedRecords,
@@ -91,7 +95,7 @@ Page({
 
   groupByDate(records) {
     const groups = {}
-    
+
     records.forEach(record => {
       if (!groups[record.date]) {
         groups[record.date] = {
@@ -109,7 +113,7 @@ Page({
       groups[record.date].redIn += record.redIn || 0
       groups[record.date].records.push(record)
     })
-    
+
     return Object.values(groups).sort((a, b) => {
       return new Date(b.date) - new Date(a.date)
     })
@@ -117,12 +121,16 @@ Page({
 
   editData(e) {
     const { id } = e.currentTarget.dataset
-    
+
     db.getRecordById(id).then(record => {
       if (record) {
         this.setData({
           showDataModal: true,
           editRecordId: id,
+          editRouteName: record.routeName || '',
+          editPlateNumber: record.plateNumber || '',
+          editSendBlueOut: record.sendBlueOut || 0,
+          editSendRedOut: record.sendRedOut || 0,
           editBlueOut: record.blueOut || 0,
           editBlueIn: record.blueIn || 0,
           editRedOut: record.redOut || 0,
@@ -136,11 +144,31 @@ Page({
     this.setData({
       showDataModal: false,
       editRecordId: '',
+      editRouteName: '',
+      editPlateNumber: '',
+      editSendBlueOut: 0,
+      editSendRedOut: 0,
       editBlueOut: 0,
       editBlueIn: 0,
       editRedOut: 0,
       editRedIn: 0
     })
+  },
+
+  onEditRouteNameChange(e) {
+    this.setData({ editRouteName: e.detail.value })
+  },
+
+  onEditPlateNumberChange(e) {
+    this.setData({ editPlateNumber: e.detail.value })
+  },
+
+  onEditSendBlueOutChange(e) {
+    this.setData({ editSendBlueOut: parseInt(e.detail.value) || 0 })
+  },
+
+  onEditSendRedOutChange(e) {
+    this.setData({ editSendRedOut: parseInt(e.detail.value) || 0 })
   },
 
   onEditBlueOutChange(e) {
@@ -168,9 +196,13 @@ Page({
   },
 
   saveData() {
-    const { editRecordId, editBlueOut, editBlueIn, editRedOut, editRedIn } = this.data
-    
+    const { editRecordId, editRouteName, editPlateNumber, editSendBlueOut, editSendRedOut, editBlueOut, editBlueIn, editRedOut, editRedIn } = this.data
+
     db.updateRecord(editRecordId, {
+      routeName: editRouteName.trim(),
+      plateNumber: editPlateNumber.trim(),
+      sendBlueOut: editSendBlueOut,
+      sendRedOut: editSendRedOut,
       blueOut: editBlueOut,
       blueIn: editBlueIn,
       redOut: editRedOut,
@@ -208,7 +240,7 @@ Page({
 
   saveRemark() {
     const { editRecordId, editRemark } = this.data
-    
+
     db.updateRecord(editRecordId, { remark: editRemark.trim() }).then(() => {
       this.hideRemarkModal()
       this.loadRecords()
@@ -228,7 +260,7 @@ Page({
       })
       return
     }
-    
+
     const dates = records.map(r => r.date).sort()
     this.setData({
       showExportModal: true,
@@ -288,7 +320,7 @@ Page({
 
   exportRecords() {
     const { exportRecords, startDate, endDate, exportStats } = this.data
-    
+
     if (exportRecords.length === 0) {
       wx.showToast({
         title: '请选择日期范围',
@@ -309,7 +341,7 @@ Page({
     grouped.forEach(group => {
       content += `[${group.date}]\n`
       group.records.forEach(r => {
-        content += `${r.createTime} `
+        content += `${r.routeName || ''} ${r.plateNumber || ''} ${r.createTime} `
         if (r.blueOut > 0) content += `蓝出:${r.blueOut} `
         if (r.blueIn > 0) content += `蓝入:${r.blueIn} `
         if (r.redOut > 0) content += `红出:${r.redOut} `
@@ -338,7 +370,7 @@ Page({
 
   shareExport() {
     const content = wx.getStorageSync('exportData') || ''
-    
+
     wx.showModal({
       title: '导出内容',
       content: content,
@@ -362,7 +394,7 @@ Page({
 
   deleteRecord(e) {
     const { id } = e.currentTarget.dataset
-    
+
     wx.showModal({
       title: '确认删除',
       content: '确定要删除这条记录吗？',

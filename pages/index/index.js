@@ -7,15 +7,20 @@ Page({
     today: '',
     monthStart: '',
     quickType: 'today',
+    routeName: '',
+    plateNumber: '',
     blueOut: 0,
     blueIn: 0,
     redOut: 0,
     redIn: 0,
     remark: '',
+    sendBlueOut: 0,
+    sendRedOut: 0,
     todayBlueOut: 0,
     todayBlueIn: 0,
     todayRedOut: 0,
     todayRedIn: 0,
+    todayRecordCount: 0,
     barBlueOut: 4,
     barBlueIn: 4,
     barRedOut: 4,
@@ -70,6 +75,7 @@ Page({
         todayBlueIn,
         todayRedOut,
         todayRedIn,
+        todayRecordCount: dayRecords.length,
         barBlueOut,
         barBlueIn,
         barRedOut,
@@ -137,11 +143,15 @@ Page({
     setTimeout(() => {
       this.setData({
         selectedDate,
+        routeName: '',
+        plateNumber: '',
         blueOut: 0,
         blueIn: 0,
         redOut: 0,
         redIn: 0,
-        remark: ''
+        remark: '',
+        sendBlueOut: 0,
+        sendRedOut: 0
       }, () => {
         this.updateQuickType()
         this.loadData()
@@ -156,11 +166,15 @@ Page({
       this.setData({
         selectedDate: this.data.today,
         quickType: 'today',
+        routeName: '',
+        plateNumber: '',
         blueOut: 0,
         blueIn: 0,
         redOut: 0,
         redIn: 0,
-        remark: ''
+        remark: '',
+        sendBlueOut: 0,
+        sendRedOut: 0
       }, () => {
         this.loadData()
         this.animateBarsIn()
@@ -178,11 +192,15 @@ Page({
       this.setData({
         selectedDate: yesterdayDate,
         quickType: 'yesterday',
+        routeName: '',
+        plateNumber: '',
         blueOut: 0,
         blueIn: 0,
         redOut: 0,
         redIn: 0,
-        remark: ''
+        remark: '',
+        sendBlueOut: 0,
+        sendRedOut: 0
       }, () => {
         this.loadData()
         this.animateBarsIn()
@@ -200,11 +218,15 @@ Page({
       this.setData({
         selectedDate: lastWeekDate,
         quickType: 'lastWeek',
+        routeName: '',
+        plateNumber: '',
         blueOut: 0,
         blueIn: 0,
         redOut: 0,
         redIn: 0,
-        remark: ''
+        remark: '',
+        sendBlueOut: 0,
+        sendRedOut: 0
       }, () => {
         this.loadData()
         this.animateBarsIn()
@@ -222,16 +244,28 @@ Page({
       this.setData({
         selectedDate: monthStartDate,
         quickType: 'monthStart',
+        routeName: '',
+        plateNumber: '',
         blueOut: 0,
         blueIn: 0,
         redOut: 0,
         redIn: 0,
-        remark: ''
+        remark: '',
+        sendBlueOut: 0,
+        sendRedOut: 0
       }, () => {
         this.loadData()
         this.animateBarsIn()
       })
     }, 400)
+  },
+
+  onRouteNameChange(e) {
+    this.setData({ routeName: e.detail.value })
+  },
+
+  onPlateNumberChange(e) {
+    this.setData({ plateNumber: e.detail.value })
   },
 
   onBlueOutChange(e) {
@@ -254,6 +288,22 @@ Page({
     this.setData({ remark: e.detail.value })
   },
 
+  onSendBlueOutChange(e) {
+    this.setData({ sendBlueOut: parseInt(e.detail.value) || 0 })
+  },
+
+  onSendRedOutChange(e) {
+    this.setData({ sendRedOut: parseInt(e.detail.value) || 0 })
+  },
+
+  adjustSendValue(e) {
+    const field = e.currentTarget.dataset.field
+    const delta = parseInt(e.currentTarget.dataset.delta)
+    const currentValue = this.data[field]
+    const newValue = Math.max(0, currentValue + delta)
+    this.setData({ [field]: newValue })
+  },
+
   adjustValue(e) {
     const field = e.currentTarget.dataset.field
     const delta = parseInt(e.currentTarget.dataset.delta)
@@ -262,38 +312,26 @@ Page({
     this.setData({ [field]: newValue })
   },
 
-  copyLastRemark() {
-    const { selectedDate } = this.data
-    db.getAllRecords().then(allRecords => {
-      const dayRecords = allRecords.filter(r => r.date === selectedDate)
-      
-      if (dayRecords.length > 0) {
-        const lastRecord = dayRecords[dayRecords.length - 1]
-        if (lastRecord.remark) {
-          this.setData({ remark: lastRecord.remark })
-          wx.showToast({
-            title: '已复制上次备注',
-            icon: 'none'
-          })
-        } else {
-          wx.showToast({
-            title: '上次无备注',
-            icon: 'none'
-          })
-        }
-      } else {
-        wx.showToast({
-          title: '无历史记录',
-          icon: 'none'
-        })
-      }
-    })
-  },
-
   submitRecord() {
-    const { blueOut, blueIn, redOut, redIn, remark, selectedDate } = this.data
+    const { routeName, plateNumber, blueOut, blueIn, redOut, redIn, remark, selectedDate, sendBlueOut, sendRedOut } = this.data
     
-    if (blueOut === 0 && blueIn === 0 && redOut === 0 && redIn === 0 && !remark) {
+    if (!routeName.trim()) {
+      wx.showToast({
+        title: '请输入线路名称',
+        icon: 'none'
+      })
+      return
+    }
+
+    if (!plateNumber.trim()) {
+      wx.showToast({
+        title: '请输入车牌号',
+        icon: 'none'
+      })
+      return
+    }
+    
+    if (blueOut === 0 && blueIn === 0 && redOut === 0 && redIn === 0 && !remark && sendBlueOut === 0 && sendRedOut === 0) {
       wx.showToast({
         title: '请输入数量或备注',
         icon: 'none'
@@ -303,6 +341,10 @@ Page({
 
     const newRecord = {
       date: selectedDate,
+      routeName: routeName.trim(),
+      plateNumber: plateNumber.trim(),
+      sendBlueOut,
+      sendRedOut,
       blueOut,
       blueIn,
       redOut,
@@ -312,11 +354,15 @@ Page({
 
     db.addRecord(newRecord).then(() => {
       this.setData({
+        routeName: '',
+        plateNumber: '',
         blueOut: 0,
         blueIn: 0,
         redOut: 0,
         redIn: 0,
-        remark: ''
+        remark: '',
+        sendBlueOut: 0,
+        sendRedOut: 0
       })
       
       this.loadData()

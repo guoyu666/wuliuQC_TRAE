@@ -19,19 +19,19 @@
     <view class="summary-card card">
       <view class="summary-row">
         <view class="summary-item blue">
-          <view class="summary-label">发出</view>
+          <view class="summary-label">蓝出</view>
           <view class="summary-value">{{item.blueOut}}</view>
         </view>
         <view class="summary-item blue">
-          <view class="summary-label">收回</view>
+          <view class="summary-label">蓝入</view>
           <view class="summary-value">{{item.blueIn}}</view>
         </view>
         <view class="summary-item red">
-          <view class="summary-label">发出</view>
+          <view class="summary-label">红出</view>
           <view class="summary-value">{{item.redOut}}</view>
         </view>
         <view class="summary-item red">
-          <view class="summary-label">收回</view>
+          <view class="summary-label">红入</view>
           <view class="summary-value">{{item.redIn}}</view>
         </view>
       </view>
@@ -39,17 +39,23 @@
     <view class="record-items">
       <view class="record-item" wx:for="{{item.records}}" wx:for-item="record" wx:key="id">
         <view class="record-content">
+          <view class="record-header">
+            <view class="record-route">{{record.routeName}}</view>
+            <view class="record-plate">{{record.plateNumber}}</view>
+          </view>
           <view class="record-time">{{record.createTime}}</view>
           <view class="record-detail">
-            <text wx:if="{{record.blueOut > 0}}">蓝出:{{record.blueOut}} </text>
-            <text wx:if="{{record.blueIn > 0}}">蓝入:{{record.blueIn}} </text>
-            <text wx:if="{{record.redOut > 0}}">红出:{{record.redOut}} </text>
-            <text wx:if="{{record.redIn > 0}}">红入:{{record.redIn}}</text>
+            <text wx:if="{{record.sendBlueOut > 0}}" class="blue-text">发蓝:{{record.sendBlueOut}} </text>
+            <text wx:if="{{record.sendRedOut > 0}}" class="red-text">发红:{{record.sendRedOut}} </text>
+            <text wx:if="{{record.blueOut > 0}}" class="blue-text">蓝出:{{record.blueOut}} </text>
+            <text wx:if="{{record.blueIn > 0}}" class="blue-text">蓝入:{{record.blueIn}} </text>
+            <text wx:if="{{record.redOut > 0}}" class="red-text">红出:{{record.redOut}} </text>
+            <text wx:if="{{record.redIn > 0}}" class="red-text">红入:{{record.redIn}}</text>
           </view>
           <view class="record-remark" wx:if="{{record.remark}}">备注: {{record.remark}}</view>
         </view>
         <view class="record-actions">
-          <view class="edit-btn" bindtap="editData" data-id="{{record.id}}">编辑数据</view>
+          <view class="edit-btn" bindtap="editData" data-id="{{record.id}}">编辑</view>
           <view class="remark-btn" bindtap="editRemark" data-id="{{record.id}}" data-remark="{{record.remark}}">备注</view>
           <view class="delete-btn" bindtap="deleteRecord" data-id="{{record.id}}">删除</view>
         </view>
@@ -86,10 +92,10 @@
       <view class="export-preview" wx:if="{{exportRecords.length > 0}}">
         <view class="preview-title">共 {{exportRecords.length}} 条记录</view>
         <view class="preview-stats">
-          <view class="stat-item">蓝出: {{exportStats.blueOut}}</view>
-          <view class="stat-item">蓝入: {{exportStats.blueIn}}</view>
-          <view class="stat-item">红出: {{exportStats.redOut}}</view>
-          <view class="stat-item">红入: {{exportStats.redIn}}</view>
+          <view class="stat-item blue">蓝出: {{exportStats.blueOut}}</view>
+          <view class="stat-item blue">蓝入: {{exportStats.blueIn}}</view>
+          <view class="stat-item red">红出: {{exportStats.redOut}}</view>
+          <view class="stat-item red">红入: {{exportStats.redIn}}</view>
         </view>
       </view>
       <view class="export-preview" wx:else>
@@ -106,6 +112,35 @@
   <view class="modal-content" wx:if="{{showDataModal}}">
     <view class="modal-header">编辑数据</view>
     <view class="modal-body">
+      <view class="edit-group">
+        <view class="edit-label">线路名称</view>
+        <input class="edit-text-input" placeholder="请输入线路名称" value="{{editRouteName}}" bindinput="onEditRouteNameChange" />
+      </view>
+      <view class="edit-group">
+        <view class="edit-label">车牌号</view>
+        <input class="edit-text-input" placeholder="请输入车牌号" value="{{editPlateNumber}}" bindinput="onEditPlateNumberChange" />
+      </view>
+      <view class="edit-group">
+        <view class="edit-label blue">物流发出</view>
+        <view class="edit-row">
+          <view class="edit-item">
+            <view class="edit-name">蓝框</view>
+            <view class="edit-stepper">
+              <view class="stepper-btn" bindtap="adjustEditValue" data-field="editSendBlueOut" data-delta="-1">-</view>
+              <input class="stepper-input" type="number" value="{{editSendBlueOut}}" bindinput="onEditSendBlueOutChange" />
+              <view class="stepper-btn" bindtap="adjustEditValue" data-field="editSendBlueOut" data-delta="1">+</view>
+            </view>
+          </view>
+          <view class="edit-item">
+            <view class="edit-name">红框</view>
+            <view class="edit-stepper">
+              <view class="stepper-btn" bindtap="adjustEditValue" data-field="editSendRedOut" data-delta="-1">-</view>
+              <input class="stepper-input" type="number" value="{{editSendRedOut}}" bindinput="onEditSendRedOutChange" />
+              <view class="stepper-btn" bindtap="adjustEditValue" data-field="editSendRedOut" data-delta="1">+</view>
+            </view>
+          </view>
+        </view>
+      </view>
       <view class="edit-group">
         <view class="edit-label blue">蓝色框子</view>
         <view class="edit-row">

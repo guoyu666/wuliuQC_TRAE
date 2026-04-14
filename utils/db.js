@@ -84,6 +84,10 @@ async function addRecord(record) {
           _openid: openid,
           id: newRecord.id,
           date: newRecord.date,
+          routeName: newRecord.routeName,
+          plateNumber: newRecord.plateNumber,
+          sendBlueOut: newRecord.sendBlueOut || 0,
+          sendRedOut: newRecord.sendRedOut || 0,
           blueOut: newRecord.blueOut,
           blueIn: newRecord.blueIn,
           redOut: newRecord.redOut,
@@ -131,6 +135,10 @@ async function getAllRecords() {
         const cloudRecords = res.data.map(r => ({
           id: r.id || r._id,
           date: r.date,
+          routeName: r.routeName,
+          plateNumber: r.plateNumber,
+          sendBlueOut: r.sendBlueOut || 0,
+          sendRedOut: r.sendRedOut || 0,
           blueOut: r.blueOut,
           blueIn: r.blueIn,
           redOut: r.redOut,
@@ -202,6 +210,10 @@ async function updateRecord(id, updates) {
       if (cloudRecords.data && cloudRecords.data.length > 0) {
         await db.collection('records').doc(cloudRecords.data[0]._id).update({
           data: {
+            routeName: updates.routeName,
+            plateNumber: updates.plateNumber,
+            sendBlueOut: updates.sendBlueOut || 0,
+            sendRedOut: updates.sendRedOut || 0,
             blueOut: updates.blueOut,
             blueIn: updates.blueIn,
             redOut: updates.redOut,

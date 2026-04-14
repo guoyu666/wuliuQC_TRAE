@@ -18,6 +18,28 @@
     <view class="quick-date-item {{quickType === 'monthStart' ? 'active' : ''}}" bindtap="goToMonthStart">月初</view>
   </view>
 
+  <view class="center-send-card card">
+    <view class="section-title">物流中心发出框子数量</view>
+    <view class="send-input-row">
+      <view class="send-input-item">
+        <view class="send-label blue">蓝色框子</view>
+        <view class="send-stepper">
+          <view class="stepper-btn" bindtap="adjustSendValue" data-field="sendBlueOut" data-delta="-1">-</view>
+          <input class="stepper-input" type="number" value="{{sendBlueOut}}" bindinput="onSendBlueOutChange" />
+          <view class="stepper-btn" bindtap="adjustSendValue" data-field="sendBlueOut" data-delta="1">+</view>
+        </view>
+      </view>
+      <view class="send-input-item">
+        <view class="send-label red">红色框子</view>
+        <view class="send-stepper">
+          <view class="stepper-btn" bindtap="adjustSendValue" data-field="sendRedOut" data-delta="-1">-</view>
+          <input class="stepper-input" type="number" value="{{sendRedOut}}" bindinput="onSendRedOutChange" />
+          <view class="stepper-btn" bindtap="adjustSendValue" data-field="sendRedOut" data-delta="1">+</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
   <view class="header-card card" animation="{{animationData}}">
     <view class="date-label">当日收发汇总</view>
     <view class="summary-row">
@@ -40,6 +62,7 @@
         <view class="summary-value">{{todayRedIn}}</view>
       </view>
     </view>
+    <view class="record-count">共 {{todayRecordCount}} 条记录</view>
   </view>
 
   <view class="chart-card card">
@@ -87,8 +110,18 @@
   </view>
 
   <view class="input-card card">
-    <view class="section-title">本次记录</view>
-    
+    <view class="section-title">新增记录</view>
+
+    <view class="input-group">
+      <view class="input-label">线路名称</view>
+      <input class="text-input" placeholder="请输入线路名称（如：京沪线）" value="{{routeName}}" bindinput="onRouteNameChange" />
+    </view>
+
+    <view class="input-group">
+      <view class="input-label">车牌号</view>
+      <input class="text-input" placeholder="请输入车牌号（如：京A12345）" value="{{plateNumber}}" bindinput="onPlateNumberChange" />
+    </view>
+
     <view class="input-group">
       <view class="input-label blue-label">蓝色框子</view>
       <view class="input-row">

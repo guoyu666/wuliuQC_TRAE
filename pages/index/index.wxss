@@ -68,6 +68,49 @@
   font-weight: 500;
 }
 
+.center-send-card {
+  text-align: center;
+  padding: 24rpx;
+  margin-bottom: 20rpx;
+}
+
+.center-send-card .section-title {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #333333;
+  margin-bottom: 20rpx;
+}
+
+.send-input-row {
+  display: flex;
+  justify-content: space-around;
+}
+
+.send-input-item {
+  flex: 1;
+  text-align: center;
+}
+
+.send-label {
+  font-size: 26rpx;
+  font-weight: 500;
+  margin-bottom: 12rpx;
+}
+
+.send-label.blue {
+  color: #1976D2;
+}
+
+.send-label.red {
+  color: #D32F2F;
+}
+
+.send-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .header-card {
   text-align: center;
   padding: 24rpx;
@@ -112,6 +155,15 @@
 
 .summary-item.red .summary-value {
   color: #D32F2F;
+}
+
+.record-count {
+  font-size: 24rpx;
+  color: #999999;
+  text-align: center;
+  margin-top: 16rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx solid #EEEEEE;
 }
 
 .chart-card {
@@ -311,6 +363,16 @@
 .btn-row .btn-secondary {
   flex: 1;
   margin-top: 0;
+}
+
+.text-input {
+  width: 100%;
+  height: 80rpx;
+  padding: 0 20rpx;
+  font-size: 28rpx;
+  background-color: #F5F5F5;
+  border-radius: 8rpx;
+  box-sizing: border-box;
 }
 
 .remark-input {
