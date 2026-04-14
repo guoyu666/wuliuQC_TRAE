@@ -170,6 +170,10 @@
   font-size: 26rpx;
 }
 
+.export-btn.highlight {
+  background-color: #4CAF50;
+}
+
 .export-icon {
   margin-right: 8rpx;
 }

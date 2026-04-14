@@ -35,9 +35,9 @@
   </view>
 
   <view class="export-bar">
-    <view class="export-btn" bindtap="showExportModal">
+    <view class="export-btn {{isSearching ? 'highlight' : ''}}" bindtap="showExportModal">
       <text class="export-icon">📤</text>
-      <text>导出记录</text>
+      <text>{{isSearching ? '导出筛选结果' : '导出记录'}}</text>
     </view>
   </view>
 

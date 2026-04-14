@@ -344,7 +344,14 @@ Page({
   },
 
   showExportModal() {
-    const records = this.data.records
+    let records = []
+    
+    if (this.data.isSearching) {
+      records = this.getFilteredRecords()
+    } else {
+      records = this.data.records
+    }
+    
     if (records.length === 0) {
       wx.showToast({
         title: '暂无记录可导出',
@@ -361,6 +368,31 @@ Page({
       exportRecords: records,
       exportStats: this.calculateStats(records)
     })
+  },
+
+  getFilteredRecords() {
+    const { records, searchKeyword, filterStartDate, filterEndDate } = this.data
+    
+    let filtered = records
+    
+    if (searchKeyword) {
+      const keyword = searchKeyword.toLowerCase()
+      filtered = filtered.filter(r => {
+        return (r.routeName && r.routeName.toLowerCase().includes(keyword)) ||
+               (r.plateNumber && r.plateNumber.toLowerCase().includes(keyword)) ||
+               (r.remark && r.remark.toLowerCase().includes(keyword))
+      })
+    }
+    
+    if (filterStartDate) {
+      filtered = filtered.filter(r => r.date >= filterStartDate)
+    }
+    
+    if (filterEndDate) {
+      filtered = filtered.filter(r => r.date <= filterEndDate)
+    }
+    
+    return filtered
   },
 
   hideExportModal() {
