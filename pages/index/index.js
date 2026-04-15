@@ -1,6 +1,7 @@
 const util = require('../../utils/util.js')
 const db = require('../../utils/db.js')
 const feedback = require('../../utils/feedback.js')
+const theme = require('../../utils/theme.js')
 
 Page({
   data: {
@@ -36,10 +37,13 @@ Page({
     showBlueSection: true,
     showRedSection: true,
     groupedList: [],
-    collapsedGroups: {}
+    collapsedGroups: {},
+    isDarkTheme: false
   },
 
   onLoad() {
+    this.setData({ isDarkTheme: theme.isDark })
+    
     const today = new Date()
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
     
@@ -55,6 +59,7 @@ Page({
   },
 
   onShow() {
+    this.setData({ isDarkTheme: theme.isDark })
     this.loadData()
   },
 
@@ -549,6 +554,12 @@ Page({
     wx.navigateTo({
       url: '/pages/history/history'
     })
+  },
+
+  toggleTheme() {
+    const isDark = theme.toggle()
+    this.setData({ isDarkTheme: isDark })
+    feedback.light()
   },
 
   goToStatistics() {

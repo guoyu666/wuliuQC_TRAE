@@ -1,4 +1,9 @@
-<view class="container">
+<view class="container {{isDarkTheme ? 'dark-theme' : ''}}">
+  <view class="header-bar">
+    <view class="theme-toggle" bindtap="toggleTheme">
+      <text>{{isDarkTheme ? '☀️' : '🌙'}}</text>
+    </view>
+  </view>
   <view class="date-selector">
     <view class="date-picker-wrap">
       <picker mode="date" value="{{selectedDate}}" start="2020-01-01" end="2099-12-31" bindchange="onDateChange">
