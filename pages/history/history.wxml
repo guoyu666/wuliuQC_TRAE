@@ -39,6 +39,10 @@
       <text class="export-icon">📤</text>
       <text>{{isSearching ? '导出筛选结果' : '导出记录'}}</text>
     </view>
+    <view class="backup-btn" bindtap="showBackupModal">
+      <text class="backup-icon">💾</text>
+      <text>备份</text>
+    </view>
   </view>
 
   <view class="empty-state" wx:if="{{displayGroupedRecords.length === 0}}">
@@ -250,6 +254,27 @@
     <view class="modal-footer">
       <view class="modal-btn cancel" bindtap="hideRemarkModal">取消</view>
       <view class="modal-btn confirm" bindtap="saveRemark">保存</view>
+    </view>
+  </view>
+
+  <view class="modal-mask" wx:if="{{showBackupModal}}" bindtap="hideBackupModal"></view>
+  <view class="modal-content" wx:if="{{showBackupModal}}">
+    <view class="modal-header">数据备份与恢复</view>
+    <view class="modal-body">
+      <view class="backup-section">
+        <view class="backup-title">导出备份</view>
+        <view class="backup-desc">将所有记录导出为 JSON 文件保存</view>
+        <view class="backup-btn-main" bindtap="exportBackup">导出备份文件</view>
+      </view>
+      <view class="backup-divider"></view>
+      <view class="backup-section">
+        <view class="backup-title">导入恢复</view>
+        <view class="backup-desc">从备份文件恢复数据（会覆盖现有数据）</view>
+        <view class="restore-btn-main" bindtap="importBackup">选择备份文件</view>
+      </view>
+    </view>
+    <view class="modal-footer">
+      <view class="modal-btn cancel" bindtap="hideBackupModal">关闭</view>
     </view>
   </view>
 </view>

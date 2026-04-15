@@ -347,3 +347,27 @@ page {
   background-color: var(--bg-input);
   color: var(--text-primary);
 }
+
+.dark-theme .backup-btn {
+  background-color: var(--blue-color);
+}
+
+.dark-theme .backup-btn-main {
+  background-color: var(--blue-color);
+}
+
+.dark-theme .restore-btn-main {
+  background-color: #F59E0B;
+}
+
+.dark-theme .backup-title {
+  color: var(--text-primary);
+}
+
+.dark-theme .backup-desc {
+  color: var(--text-secondary);
+}
+
+.dark-theme .backup-divider {
+  background-color: var(--border-color);
+}

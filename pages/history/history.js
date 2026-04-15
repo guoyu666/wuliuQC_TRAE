@@ -44,7 +44,8 @@ Page({
     filteredRecordCount: 0,
     showFilter: false,
     filterStartDate: '',
-    filterEndDate: ''
+    filterEndDate: '',
+    showBackupModal: false
   },
 
   onLoad() {
@@ -402,6 +403,90 @@ Page({
       endDate: '',
       exportRecords: [],
       exportStats: { blueOut: 0, blueIn: 0, redOut: 0, redIn: 0 }
+    })
+  },
+
+  showBackupModal() {
+    this.setData({ showBackupModal: true })
+  },
+
+  hideBackupModal() {
+    this.setData({ showBackupModal: false })
+  },
+
+  exportBackup() {
+    const jsonStr = db.exportAllData()
+    const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+    const filename = `backup_${timestamp}.json`
+    
+    const fs = wx.getFileSystemManager()
+    const savedFilePath = `${wx.env.USER_DATA_PATH}/${filename}`
+    
+    fs.writeFile({
+      filePath: savedFilePath,
+      data: jsonStr,
+      encoding: 'utf8',
+      success: () => {
+        wx.shareFileMessage({
+          filePath: savedFilePath,
+          fileName: filename,
+          success: () => {
+            feedback.success()
+            wx.showToast({ title: '备份成功', icon: 'success' })
+          },
+          fail: (err) => {
+            wx.showToast({ title: '分享失败', icon: 'none' })
+          }
+        })
+      },
+      fail: () => {
+        wx.showToast({ title: '创建备份失败', icon: 'none' })
+      }
+    })
+  },
+
+  importBackup() {
+    wx.chooseMessageFile({
+      count: 1,
+      type: 'file',
+      extension: ['json'],
+      success: (res) => {
+        const filePath = res.tempFiles[0].path
+        const fs = wx.getFileSystemManager()
+        
+        fs.readFile({
+          filePath: filePath,
+          encoding: 'utf8',
+          success: (data) => {
+            wx.showModal({
+              title: '确认恢复',
+              content: '恢复数据会覆盖现有数据，确定要继续吗？',
+              success: (modalRes) => {
+                if (modalRes.confirm) {
+                  const result = db.importAllData(data.data)
+                  if (result.success) {
+                    feedback.success()
+                    this.hideBackupModal()
+                    this.setData({
+                      routeList: db.getRoutes(),
+                      plateList: db.getPlates()
+                    })
+                    this.loadRecords()
+                    wx.showToast({ title: '恢复成功', icon: 'success' })
+                  } else {
+                    wx.showToast({ title: result.message, icon: 'none' })
+                  }
+                }
+              }
+            })
+          },
+          fail: () => {
+            wx.showToast({ title: '读取文件失败', icon: 'none' })
+          }
+        })
+      },
+      fail: () => {
+      }
     })
   },
 

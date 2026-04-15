@@ -346,6 +346,35 @@ function deletePlate(plateNumber) {
   return filtered
 }
 
+function exportAllData() {
+  const records = wx.getStorageSync('records') || []
+  const routes = wx.getStorageSync('routes') || []
+  const plates = wx.getStorageSync('plates') || []
+  const backupData = {
+    version: '1.0',
+    timestamp: new Date().toISOString(),
+    records,
+    routes,
+    plates
+  }
+  return JSON.stringify(backupData, null, 2)
+}
+
+function importAllData(jsonStr) {
+  try {
+    const data = JSON.parse(jsonStr)
+    if (!data.version || !data.records) {
+      return { success: false, message: '无效的备份文件格式' }
+    }
+    wx.setStorageSync('records', data.records || [])
+    wx.setStorageSync('routes', data.routes || [])
+    wx.setStorageSync('plates', data.plates || [])
+    return { success: true, message: '恢复成功' }
+  } catch (e) {
+    return { success: false, message: '解析备份文件失败' }
+  }
+}
+
 module.exports = {
   initCloud,
   setOpenid,
@@ -366,5 +395,7 @@ module.exports = {
   getPlates,
   addPlate,
   deleteRoute,
-  deletePlate
+  deletePlate,
+  exportAllData,
+  importAllData
 }

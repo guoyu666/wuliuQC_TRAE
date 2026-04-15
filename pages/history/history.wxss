@@ -437,6 +437,62 @@
   font-weight: 500;
 }
 
+.backup-btn {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  background-color: #4CAF50;
+  color: #FFFFFF;
+  padding: 12rpx 20rpx;
+  border-radius: 8rpx;
+  font-size: 26rpx;
+}
+
+.backup-icon {
+  font-size: 28rpx;
+}
+
+.backup-section {
+  padding: 16rpx 0;
+}
+
+.backup-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #333333;
+  margin-bottom: 8rpx;
+}
+
+.backup-desc {
+  font-size: 24rpx;
+  color: #666666;
+  margin-bottom: 16rpx;
+}
+
+.backup-divider {
+  height: 1rpx;
+  background-color: #EEEEEE;
+  margin: 16rpx 0;
+}
+
+.backup-btn-main {
+  background-color: #1976D2;
+  color: #FFFFFF;
+  padding: 20rpx;
+  border-radius: 12rpx;
+  text-align: center;
+  font-size: 28rpx;
+}
+
+.restore-btn-main {
+  background-color: #FF9800;
+  color: #FFFFFF;
+  padding: 20rpx;
+  border-radius: 12rpx;
+  text-align: center;
+  font-size: 28rpx;
+}
+
 .edit-group {
   margin-bottom: 32rpx;
 }
