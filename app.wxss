@@ -371,3 +371,7 @@ page {
 .dark-theme .backup-divider {
   background-color: var(--border-color);
 }
+
+.dark-theme .excel-btn {
+  background-color: #4CAF50;
+}

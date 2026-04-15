@@ -528,7 +528,7 @@ Page({
   },
 
   exportRecords() {
-    const { exportRecords, startDate, endDate, exportStats } = this.data
+    const { exportRecords, startDate, endDate } = this.data
 
     if (exportRecords.length === 0) {
       wx.showToast({
@@ -538,67 +538,35 @@ Page({
       return
     }
 
-    const grouped = this.groupByDate(exportRecords)
-    let content = `框子收发记录导出\n`
-    content += `导出时间: ${util.formatTime(new Date())}\n`
-    content += `日期范围: ${startDate} 至 ${endDate}\n`
-    content += `记录条数: ${exportRecords.length}\n`
-    content += `------------------\n`
-    content += `汇总: 蓝出${exportStats.blueOut} 蓝入${exportStats.blueIn} 红出${exportStats.redOut} 红入${exportStats.redIn}\n`
-    content += `------------------\n\n`
+    const csvContent = db.exportRecordsToCSV(exportRecords)
+    const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+    const filename = `records_${timestamp}.csv`
 
-    grouped.forEach(group => {
-      content += `[${group.date}]\n`
-      group.records.forEach(r => {
-        content += `${r.routeName || ''} ${r.plateNumber || ''} ${r.createTime} `
-        if (r.blueOut > 0) content += `蓝出:${r.blueOut} `
-        if (r.blueIn > 0) content += `蓝入:${r.blueIn} `
-        if (r.redOut > 0) content += `红出:${r.redOut} `
-        if (r.redIn > 0) content += `红入:${r.redIn} `
-        if (r.remark) content += `备注:${r.remark} `
-        content += `\n`
-      })
-      content += `小计: 蓝出${group.blueOut} 蓝入${group.blueIn} 红出${group.redOut} 红入${group.redIn}\n\n`
-    })
+    const fs = wx.getFileSystemManager()
+    const savedFilePath = `${wx.env.USER_DATA_PATH}/${filename}`
 
-    wx.setStorageSync('exportData', content)
-
-    wx.showModal({
-      title: '导出成功',
-      content: '记录已生成，是否分享？',
-      confirmText: '分享',
-      cancelText: '关闭',
-      success: (res) => {
-        this.hideExportModal()
-        if (res.confirm) {
-          this.shareExport()
-        }
+    fs.writeFile({
+      filePath: savedFilePath,
+      data: csvContent,
+      encoding: 'utf8',
+      success: () => {
+        feedback.success()
+        wx.shareFileMessage({
+          filePath: savedFilePath,
+          fileName: filename,
+          success: () => {
+            wx.showToast({ title: '导出成功', icon: 'success' })
+          },
+          fail: () => {
+            wx.showToast({ title: '分享失败', icon: 'none' })
+          }
+        })
+      },
+      fail: () => {
+        wx.showToast({ title: '导出失败', icon: 'none' })
       }
     })
-  },
-
-  shareExport() {
-    const content = wx.getStorageSync('exportData') || ''
-
-    wx.showModal({
-      title: '导出内容',
-      content: content,
-      showCancel: false,
-      confirmText: '复制',
-      success: (res) => {
-        if (res.confirm) {
-          wx.setClipboardData({
-            data: content,
-            success: () => {
-              wx.showToast({
-                title: '已复制到剪贴板',
-                icon: 'success'
-              })
-            }
-          })
-        }
-      }
-    })
+    this.hideExportModal()
   },
 
   deleteRecord(e) {

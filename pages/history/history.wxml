@@ -131,7 +131,7 @@
         </view>
       </view>
       <view class="export-preview" wx:if="{{exportRecords.length > 0}}">
-        <view class="preview-title">共 {{exportRecords.length}} 条记录</view>
+        <view class="preview-title">将导出 {{exportRecords.length}} 条记录为 Excel 格式</view>
         <view class="preview-stats">
           <view class="stat-item blue">蓝出: {{exportStats.blueOut}}</view>
           <view class="stat-item blue">蓝入: {{exportStats.blueIn}}</view>
@@ -145,7 +145,7 @@
     </view>
     <view class="modal-footer">
       <view class="modal-btn cancel" bindtap="hideExportModal">取消</view>
-      <view class="modal-btn confirm" bindtap="exportRecords">确认导出</view>
+      <view class="modal-btn confirm excel-btn" bindtap="exportRecords">导出 Excel</view>
     </view>
   </view>
 

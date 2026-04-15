@@ -375,6 +375,29 @@ function importAllData(jsonStr) {
   }
 }
 
+function exportRecordsToCSV(records) {
+  const headers = ['日期', '线路', '车牌', '物流蓝出', '物流红出', '蓝发出', '蓝收回', '红发出', '红收回', '备注', '创建时间']
+  const rows = records.map(r => [
+    r.date || '',
+    r.routeName || '',
+    r.plateNumber || '',
+    r.sendBlueOut || 0,
+    r.sendRedOut || 0,
+    r.blueOut || 0,
+    r.blueIn || 0,
+    r.redOut || 0,
+    r.redIn || 0,
+    r.remark || '',
+    r.createTime || ''
+  ])
+  
+  const csvContent = [headers, ...rows]
+    .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    .join('\n')
+  
+  return csvContent
+}
+
 module.exports = {
   initCloud,
   setOpenid,
@@ -397,5 +420,6 @@ module.exports = {
   deleteRoute,
   deletePlate,
   exportAllData,
-  importAllData
+  importAllData,
+  exportRecordsToCSV
 }

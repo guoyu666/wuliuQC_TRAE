@@ -493,6 +493,10 @@
   font-size: 28rpx;
 }
 
+.excel-btn {
+  background-color: #4CAF50;
+}
+
 .edit-group {
   margin-bottom: 32rpx;
 }
