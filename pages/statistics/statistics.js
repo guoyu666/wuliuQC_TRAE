@@ -1,5 +1,7 @@
 const util = require('../../utils/util.js')
 const db = require('../../utils/db.js')
+const feedback = require('../../utils/feedback.js')
+const theme = require('../../utils/theme.js')
 
 Page({
   data: {
@@ -9,6 +11,7 @@ Page({
     routeList: [],
     selectedRoute: '',
     routeIndex: 0,
+    isDarkTheme: false,
     totalBlueOut: 0,
     totalBlueIn: 0,
     totalRedOut: 0,
@@ -35,10 +38,15 @@ Page({
     this.setData({
       selectedMonth: `${year}-${month}`,
       selectedYear: year.toString(),
-      routeList: ['全部', ...db.getRoutes()]
+      routeList: ['全部', ...db.getRoutes()],
+      isDarkTheme: theme.isDark
     })
     
     this.loadData()
+  },
+
+  onShow() {
+    this.setData({ isDarkTheme: theme.isDark })
   },
 
   switchTab(e) {
@@ -176,6 +184,12 @@ Page({
         this.loadYearData(records)
       }
     })
+  },
+
+  toggleTheme() {
+    const isDark = theme.toggle()
+    this.setData({ isDarkTheme: isDark })
+    feedback.light()
   },
 
   loadMonthData(records) {

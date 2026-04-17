@@ -1,4 +1,9 @@
-<view class="container">
+<view class="container {{isDarkTheme ? 'dark-theme' : ''}}">
+  <view class="header-bar">
+    <view class="theme-toggle" bindtap="toggleTheme">
+      <text>{{isDarkTheme ? '☀️' : '🌙'}}</text>
+    </view>
+  </view>
   <view class="search-bar">
     <view class="search-input-wrap">
       <text class="search-icon">🔍</text>

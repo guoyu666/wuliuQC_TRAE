@@ -1,5 +1,6 @@
 const util = require('../../utils/util.js')
 const db = require('../../utils/db.js')
+const theme = require('../../utils/theme.js')
 const feedback = require('../../utils/feedback.js')
 
 Page({
@@ -45,18 +46,21 @@ Page({
     showFilter: false,
     filterStartDate: '',
     filterEndDate: '',
-    showBackupModal: false
+    showBackupModal: false,
+    isDarkTheme: false
   },
 
   onLoad() {
     this.setData({
       routeList: db.getRoutes(),
-      plateList: db.getPlates()
+      plateList: db.getPlates(),
+      isDarkTheme: theme.isDark
     })
     this.loadRecords()
   },
 
   onShow() {
+    this.setData({ isDarkTheme: theme.isDark })
     this.loadRecords()
   },
 
@@ -605,6 +609,12 @@ Page({
     }, () => {
       this.loadRecords()
     })
+  },
+
+  toggleTheme() {
+    const isDark = theme.toggle()
+    this.setData({ isDarkTheme: isDark })
+    feedback.light()
   },
 
   toggleFilter() {

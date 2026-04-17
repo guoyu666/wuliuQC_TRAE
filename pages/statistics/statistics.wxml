@@ -1,4 +1,9 @@
-<view class="container">
+<view class="container {{isDarkTheme ? 'dark-theme' : ''}}">
+  <view class="header-bar">
+    <view class="theme-toggle" bindtap="toggleTheme">
+      <text>{{isDarkTheme ? '☀️' : '🌙'}}</text>
+    </view>
+  </view>
   <view class="tab-bar">
     <view class="tab-item {{currentTab === 'month' ? 'active' : ''}}" bindtap="switchTab" data-tab="month">月度汇总</view>
     <view class="tab-item {{currentTab === 'year' ? 'active' : ''}}" bindtap="switchTab" data-tab="year">年度汇总</view>

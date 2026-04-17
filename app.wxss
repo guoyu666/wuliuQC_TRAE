@@ -375,3 +375,43 @@ page {
 .dark-theme .excel-btn {
   background-color: #4CAF50;
 }
+
+.dark-theme .route-summary-card {
+  background-color: var(--bg-card);
+}
+
+.dark-theme .route-summary-title {
+  color: var(--text-primary);
+}
+
+.dark-theme .route-summary-item {
+  background-color: var(--bg-secondary);
+}
+
+.dark-theme .route-name {
+  color: var(--text-primary);
+}
+
+.dark-theme .route-record-count {
+  color: var(--text-muted);
+}
+
+.dark-theme .stat-label {
+  color: var(--text-secondary);
+}
+
+.dark-theme .blue-stat .stat-label {
+  color: var(--blue-color);
+}
+
+.dark-theme .red-stat .stat-label {
+  color: var(--red-color);
+}
+
+.dark-theme .stat-out {
+  color: var(--text-primary);
+}
+
+.dark-theme .stat-in {
+  color: var(--text-secondary);
+}

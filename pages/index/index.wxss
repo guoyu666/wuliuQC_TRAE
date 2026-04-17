@@ -400,6 +400,87 @@
   color: #D32F2F;
 }
 
+.route-summary-card {
+  padding: 24rpx;
+  margin-bottom: 20rpx;
+}
+
+.route-summary-title {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #333333;
+  margin-bottom: 16rpx;
+}
+
+.route-summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.route-summary-item {
+  background-color: #F8F9FA;
+  border-radius: 12rpx;
+  padding: 16rpx;
+}
+
+.route-name-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12rpx;
+}
+
+.route-name {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #333333;
+}
+
+.route-record-count {
+  font-size: 22rpx;
+  color: #999999;
+}
+
+.route-stats-row {
+  display: flex;
+  gap: 16rpx;
+}
+
+.route-stat {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.stat-label {
+  font-size: 24rpx;
+  color: #666666;
+}
+
+.stat-values {
+  display: flex;
+  gap: 8rpx;
+  font-size: 24rpx;
+}
+
+.blue-stat .stat-label {
+  color: #1976D2;
+}
+
+.red-stat .stat-label {
+  color: #D32F2F;
+}
+
+.stat-out {
+  color: #333333;
+}
+
+.stat-in {
+  color: #666666;
+}
+
 .input-card {
   padding: 24rpx;
 }
