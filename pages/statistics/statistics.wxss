@@ -1,9 +1,11 @@
 .tab-bar {
   display: flex;
-  background-color: #FFFFFF;
-  border-radius: 12rpx;
+  background-color: var(--bg-card);
+  border-radius: 20rpx;
   margin-bottom: 20rpx;
   overflow: hidden;
+  border: 1rpx solid var(--border-color);
+  box-shadow: var(--shadow-control);
 }
 
 .tab-item {
@@ -11,14 +13,15 @@
   text-align: center;
   padding: 24rpx 0;
   font-size: 28rpx;
-  color: #666666;
-  background-color: #FFFFFF;
+  color: var(--text-secondary);
+  background-color: transparent;
+  font-weight: 500;
 }
 
 .tab-item.active {
-  background-color: #1976D2;
+  background: linear-gradient(135deg, #1976D2 0%, #125DB1 100%);
   color: #FFFFFF;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .date-selector {
@@ -35,10 +38,7 @@
 .date-display {
   display: flex;
   align-items: center;
-  background-color: #FFFFFF;
-  padding: 16rpx 20rpx;
-  border-radius: 12rpx;
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.08);
+  gap: 8rpx;
 }
 
 .date-icon {
@@ -67,9 +67,7 @@
 .quick-btn {
   padding: 16rpx 20rpx;
   font-size: 24rpx;
-  color: #1976D2;
-  background-color: #FFFFFF;
-  border-radius: 8rpx;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -134,8 +132,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #F5F5F5;
-  border-radius: 8rpx;
   padding: 16rpx 24rpx;
   gap: 8rpx;
 }

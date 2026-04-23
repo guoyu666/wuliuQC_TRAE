@@ -26,18 +26,12 @@
   display: flex;
   align-items: center;
   gap: 16rpx;
-  padding: 16rpx 0;
+  padding: 12rpx 0;
   margin-bottom: 16rpx;
 }
 
 .search-input-wrap {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  background-color: #F5F5F5;
-  border-radius: 36rpx;
-  padding: 0 20rpx;
-  height: 72rpx;
+  min-height: 76rpx;
 }
 
 .search-icon {
@@ -46,9 +40,7 @@
 }
 
 .search-input {
-  flex: 1;
-  height: 72rpx;
-  font-size: 28rpx;
+  font-weight: 500;
 }
 
 .clear-btn {
@@ -68,19 +60,18 @@
 }
 
 .filter-btn {
-  padding: 16rpx 24rpx;
+  padding: 16rpx 26rpx;
   font-size: 26rpx;
-  color: #1976D2;
-  background-color: #E3F2FD;
-  border-radius: 8rpx;
+  font-weight: 600;
 }
 
 .filter-panel {
   display: none;
-  background-color: #F5F5F5;
-  border-radius: 12rpx;
-  padding: 20rpx;
+  background-color: var(--bg-muted);
+  border-radius: 20rpx;
+  padding: 22rpx;
   margin-bottom: 16rpx;
+  border: 1rpx solid var(--border-color);
 }
 
 .filter-panel.show {
@@ -107,10 +98,8 @@
 
 .filter-value {
   font-size: 26rpx;
-  color: #333333;
-  padding: 12rpx;
-  background-color: #FFFFFF;
-  border-radius: 8rpx;
+  padding: 16rpx 12rpx;
+  font-weight: 500;
 }
 
 .filter-value.has-value {
@@ -132,19 +121,15 @@
 }
 
 .filter-reset {
-  padding: 12rpx 32rpx;
+  padding: 14rpx 34rpx;
   font-size: 26rpx;
-  color: #666666;
-  background-color: #FFFFFF;
-  border-radius: 8rpx;
+  font-weight: 500;
 }
 
 .filter-apply {
-  padding: 12rpx 32rpx;
+  padding: 14rpx 34rpx;
   font-size: 26rpx;
-  color: #FFFFFF;
-  background-color: #1976D2;
-  border-radius: 8rpx;
+  font-weight: 600;
 }
 
 .search-result-tip {
@@ -163,15 +148,13 @@
 .export-btn {
   display: flex;
   align-items: center;
-  background-color: #1976D2;
-  color: #FFFFFF;
-  padding: 12rpx 24rpx;
-  border-radius: 8rpx;
+  padding: 14rpx 24rpx;
   font-size: 26rpx;
+  font-weight: 600;
 }
 
 .export-btn.highlight {
-  background-color: #4CAF50;
+  color: #FFFFFF;
 }
 
 .export-icon {
@@ -246,11 +229,12 @@
 .record-item {
   display: flex;
   align-items: flex-start;
-  background-color: #FFFFFF;
-  border-radius: 12rpx;
+  background-color: var(--bg-card);
+  border-radius: 20rpx;
   padding: 20rpx;
   margin-bottom: 12rpx;
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-control);
+  border: 1rpx solid rgba(217, 226, 236, 0.8);
 }
 
 .record-time {
@@ -441,11 +425,9 @@
   display: flex;
   align-items: center;
   gap: 6rpx;
-  background-color: #4CAF50;
-  color: #FFFFFF;
-  padding: 12rpx 20rpx;
-  border-radius: 8rpx;
+  padding: 14rpx 20rpx;
   font-size: 26rpx;
+  font-weight: 600;
 }
 
 .backup-icon {
