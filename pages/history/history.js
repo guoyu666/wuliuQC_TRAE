@@ -47,6 +47,7 @@ Page({
     filterStartDate: '',
     filterEndDate: '',
     showBackupModal: false,
+    pressedRecordId: '',
     isDarkTheme: false
   },
 
@@ -550,6 +551,8 @@ Page({
 
   deleteRecord(e) {
     const { id } = e.currentTarget.dataset
+    this.setData({ pressedRecordId: '' })
+    feedback.heavy()
 
     wx.showModal({
       title: '确认删除',
@@ -567,6 +570,23 @@ Page({
         }
       }
     })
+  },
+
+  onRecordTouchStart(e) {
+    const { id } = e.currentTarget.dataset
+    this.setData({ pressedRecordId: id })
+  },
+
+  onRecordTouchEnd() {
+    if (this.data.pressedRecordId) {
+      this.setData({ pressedRecordId: '' })
+    }
+  },
+
+  onRecordLongPress(e) {
+    const { id } = e.currentTarget.dataset
+    this.setData({ pressedRecordId: id })
+    this.deleteRecord(e)
   },
 
   onSearchInput(e) {
