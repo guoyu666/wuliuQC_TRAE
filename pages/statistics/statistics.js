@@ -46,7 +46,16 @@ Page({
   },
 
   onShow() {
-    this.setData({ isDarkTheme: theme.isDark })
+    const routeList = ['全部', ...db.getRoutes()]
+    const routeIndex = routeList.indexOf(this.data.selectedRoute || '全部')
+
+    this.setData({
+      isDarkTheme: theme.isDark,
+      routeList,
+      routeIndex: routeIndex >= 0 ? routeIndex : 0,
+      selectedRoute: routeIndex > 0 ? routeList[routeIndex] : ''
+    })
+    this.loadData(true)
   },
 
   switchTab(e) {
@@ -188,8 +197,8 @@ Page({
     })
   },
 
-  loadData() {
-    db.getAllRecords().then(records => {
+  loadData(forceRefresh = false) {
+    db.getAllRecords({ forceRefresh }).then(records => {
       if (this.data.currentTab === 'month') {
         this.loadMonthData(records)
       } else {

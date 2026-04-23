@@ -66,7 +66,7 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.loadRecords().finally(() => {
+    this.loadRecords(true).finally(() => {
       wx.stopPullDownRefresh()
     })
   },
@@ -77,8 +77,8 @@ Page({
     }
   },
 
-  loadRecords() {
-    return db.getAllRecords().then(sortedRecords => {
+  loadRecords(forceRefresh = false) {
+    return db.getAllRecords({ forceRefresh }).then(sortedRecords => {
       const grouped = this.groupByDate(sortedRecords)
       const displayGroupedRecords = grouped.slice(0, this.data.pageSize)
       const hasMore = grouped.length > this.data.pageSize

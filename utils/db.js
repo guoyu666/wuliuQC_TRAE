@@ -136,10 +136,13 @@ function setCloudEnabled(enabled) {
 }
 
 function getCloudEnabled() {
-  if (!wx.getStorageSync('cloudEnabled')) {
+  const stored = wx.getStorageSync('cloudEnabled')
+  if (!stored) {
     return false
   }
-  return isCloudEnabled
+
+  isCloudEnabled = true
+  return true
 }
 
 async function initCloud() {
@@ -221,13 +224,14 @@ async function getTodayRecords() {
   return todayRecords
 }
 
-async function getAllRecords() {
+async function getAllRecords(options = {}) {
+  const { forceRefresh = false } = options
   const localRecords = getStoredRecords()
   const shouldUseLocalFirst = localRecords.length > 0
   const lastCloudFetchAt = getLastCloudFetchAt()
   const shouldRefreshCloud = Date.now() - lastCloudFetchAt >= CLOUD_FETCH_INTERVAL
 
-  if (isCloudEnabled && openid && (!shouldUseLocalFirst || shouldRefreshCloud)) {
+  if (isCloudEnabled && openid && (forceRefresh || !shouldUseLocalFirst || shouldRefreshCloud)) {
     try {
       const res = await wx.cloud.callFunction({
         name: CLOUD_FUNCTION_NAME,
