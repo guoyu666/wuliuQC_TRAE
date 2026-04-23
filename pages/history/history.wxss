@@ -237,64 +237,97 @@
   border: 1rpx solid rgba(217, 226, 236, 0.8);
 }
 
-.record-time {
-  font-size: 20rpx;
-  color: #999999;
-  width: 140rpx;
-  flex-shrink: 0;
-  margin-right: 16rpx;
+.record-content {
+  flex: 1;
 }
 
-.record-detail {
-  flex: 1;
+.record-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-bottom: 10rpx;
+}
+
+.record-route {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.record-edit-tag {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  color: var(--blue-color);
+  background-color: var(--blue-bg);
+  padding: 10rpx 18rpx;
+  border-radius: 999rpx;
+  font-weight: 600;
+}
+
+.record-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-bottom: 14rpx;
+}
+
+.record-plate {
   font-size: 24rpx;
-  color: #333333;
-  line-height: 1.6;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.record-time {
+  font-size: 22rpx;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.record-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+}
+
+.stat-chip {
+  font-size: 22rpx;
+  line-height: 1;
+  padding: 12rpx 16rpx;
+  border-radius: 999rpx;
+  font-weight: 600;
+}
+
+.blue-chip {
+  color: var(--blue-color);
+  background-color: var(--blue-bg);
+}
+
+.red-chip {
+  color: var(--red-color);
+  background-color: var(--red-bg);
+}
+
+.neutral-chip {
+  color: var(--text-secondary);
+  background-color: var(--bg-muted);
 }
 
 .record-remark {
   font-size: 22rpx;
-  color: #999999;
-  margin-top: 6rpx;
-  padding: 6rpx 12rpx;
-  background-color: #F5F5F5;
-  border-radius: 4rpx;
+  color: var(--text-secondary);
+  margin-top: 14rpx;
+  padding: 12rpx 14rpx;
+  background-color: var(--bg-muted);
+  border-radius: 12rpx;
+  line-height: 1.5;
 }
 
-.record-actions {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8rpx;
-  flex-shrink: 0;
-}
-
-.edit-btn {
-  font-size: 22rpx;
-  color: #1976D2;
-  padding: 10rpx 16rpx;
-  background-color: #E3F2FD;
-  border-radius: 6rpx;
-}
-
-.remark-btn {
-  font-size: 22rpx;
-  color: #FF9800;
-  padding: 10rpx 16rpx;
-  background-color: #FFF3E0;
-  border-radius: 6rpx;
-}
-
-.delete-btn {
-  font-size: 22rpx;
-  color: #D32F2F;
-  padding: 10rpx 16rpx;
-  background-color: #FFEBEE;
-  border-radius: 6rpx;
-}
-
-.record-content {
-  flex: 1;
+.record-hint {
+  margin-top: 12rpx;
+  font-size: 20rpx;
+  color: var(--text-muted);
 }
 
 .loading-more,

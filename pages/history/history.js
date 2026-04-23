@@ -10,7 +10,6 @@ Page({
     displayGroupedRecords: [],
     showExportModal: false,
     showDataModal: false,
-    showRemarkModal: false,
     editRecordId: '',
     editRouteName: '',
     editPlateNumber: '',
@@ -167,7 +166,8 @@ Page({
           editBlueOut: record.blueOut || 0,
           editBlueIn: record.blueIn || 0,
           editRedOut: record.redOut || 0,
-          editRedIn: record.redIn || 0
+          editRedIn: record.redIn || 0,
+          editRemark: record.remark || ''
         })
       }
     })
@@ -188,7 +188,8 @@ Page({
       editBlueOut: 0,
       editBlueIn: 0,
       editRedOut: 0,
-      editRedIn: 0
+      editRedIn: 0,
+      editRemark: ''
     })
   },
 
@@ -293,7 +294,7 @@ Page({
   },
 
   saveData() {
-    const { editRecordId, editRouteName, editPlateNumber, editSendBlueOut, editSendRedOut, editBlueOut, editBlueIn, editRedOut, editRedIn } = this.data
+    const { editRecordId, editRouteName, editPlateNumber, editSendBlueOut, editSendRedOut, editBlueOut, editBlueIn, editRedOut, editRedIn, editRemark } = this.data
 
     db.updateRecord(editRecordId, {
       routeName: editRouteName.trim(),
@@ -303,7 +304,8 @@ Page({
       blueOut: editBlueOut,
       blueIn: editBlueIn,
       redOut: editRedOut,
-      redIn: editRedIn
+      redIn: editRedIn,
+      remark: editRemark.trim()
     }).then(() => {
       this.hideDataModal()
       this.loadRecords()
@@ -315,39 +317,8 @@ Page({
     })
   },
 
-  editRemark(e) {
-    const { id, remark } = e.currentTarget.dataset
-    this.setData({
-      showRemarkModal: true,
-      editRecordId: id,
-      editRemark: remark || ''
-    })
-  },
-
-  hideRemarkModal() {
-    this.setData({
-      showRemarkModal: false,
-      editRecordId: '',
-      editRemark: ''
-    })
-  },
-
   onEditRemarkChange(e) {
     this.setData({ editRemark: e.detail.value })
-  },
-
-  saveRemark() {
-    const { editRecordId, editRemark } = this.data
-
-    db.updateRecord(editRecordId, { remark: editRemark.trim() }).then(() => {
-      this.hideRemarkModal()
-      this.loadRecords()
-      feedback.success()
-      wx.showToast({
-        title: '保存成功',
-        icon: 'success'
-      })
-    })
   },
 
   showExportModal() {
@@ -582,7 +553,7 @@ Page({
 
     wx.showModal({
       title: '确认删除',
-      content: '确定要删除这条记录吗？',
+      content: '长按已触发删除，确定要删除这条记录吗？',
       success: (res) => {
         if (res.confirm) {
           db.deleteRecord(id).then(() => {
