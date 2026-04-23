@@ -1,5 +1,75 @@
 const cloud = require('wx-server-sdk')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
+const PAGE_SIZE = 100
+
+function normalizeTime(value) {
+  if (!value) return new Date(0)
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return new Date(0)
+  }
+
+  return parsed
+}
+
+function sortRecords(records) {
+  return records.sort((a, b) => normalizeTime(b.createTime) - normalizeTime(a.createTime))
+}
+
+function buildRecordData(record, includeCreateTime = false) {
+  const data = {}
+  const fields = [
+    'id',
+    'date',
+    'routeName',
+    'plateNumber',
+    'sendBlueOut',
+    'sendRedOut',
+    'blueOut',
+    'blueIn',
+    'redOut',
+    'redIn',
+    'remark'
+  ]
+
+  fields.forEach(field => {
+    if (Object.prototype.hasOwnProperty.call(record, field)) {
+      data[field] = record[field]
+    }
+  })
+
+  if (includeCreateTime && record.createTime) {
+    const parsed = new Date(record.createTime)
+    data.createTime = Number.isNaN(parsed.getTime()) ? new Date() : parsed
+  }
+
+  data.syncTime = new Date()
+  return data
+}
+
+async function fetchAllRecords(recordsCollection, openid) {
+  const allRecords = []
+  let skip = 0
+
+  while (true) {
+    const res = await recordsCollection
+      .where({ _openid: openid })
+      .skip(skip)
+      .limit(PAGE_SIZE)
+      .get()
+
+    allRecords.push(...res.data)
+
+    if (res.data.length < PAGE_SIZE) {
+      break
+    }
+
+    skip += res.data.length
+  }
+
+  return allRecords
+}
 
 exports.main = async (event, context) => {
   const wxContext = cloud.getWXContext()
@@ -18,8 +88,7 @@ exports.main = async (event, context) => {
           await records.add({
             data: {
               _openid: wxContext.OPENID,
-              ...record,
-              syncTime: new Date()
+              ...buildRecordData(record, true)
             }
           })
           synced++
@@ -38,12 +107,7 @@ exports.main = async (event, context) => {
     }
 
     if (action === 'download') {
-      const { data } = await records
-        .where({
-          _openid: wxContext.OPENID
-        })
-        .orderBy('createTime', 'desc')
-        .get()
+      const data = sortRecords(await fetchAllRecords(records, wxContext.OPENID))
 
       return {
         success: true,
@@ -60,33 +124,88 @@ exports.main = async (event, context) => {
         }
       }
 
-      const cloudRecords = (await records
-        .where({
-          _openid: wxContext.OPENID
+      const cloudRecords = await fetchAllRecords(records, wxContext.OPENID)
+      const cloudMap = new Map()
+      const mergedMap = new Map()
+      const failedSyncIds = []
+
+      cloudRecords.forEach(record => {
+        const key = record.id || record._id
+        cloudMap.set(key, record)
+        mergedMap.set(key, {
+          ...record,
+          id: record.id || record._id,
+          synced: true
         })
-        .get()).data
+      })
 
-      const localIds = new Set(localRecords.map(r => r.id))
-      const onlyInCloud = cloudRecords.filter(r => !localIds.has(r.id))
-      const merged = [...localRecords, ...onlyInCloud]
+      for (const localRecord of localRecords) {
+        const recordId = localRecord.id
+        if (!recordId) {
+          continue
+        }
 
-      merged.sort((a, b) => new Date(b.createTime) - new Date(a.createTime))
+        const cloudRecord = cloudMap.get(recordId)
+
+        try {
+          if (!cloudRecord) {
+            const createRes = await records.add({
+              data: {
+                _openid: wxContext.OPENID,
+                ...buildRecordData(localRecord, true)
+              }
+            })
+
+            mergedMap.set(recordId, {
+              ...localRecord,
+              id: recordId,
+              _id: createRes._id,
+              synced: true
+            })
+            continue
+          }
+
+          if (localRecord.synced === false) {
+            await records.doc(cloudRecord._id).update({
+              data: buildRecordData(localRecord)
+            })
+          }
+
+          mergedMap.set(recordId, {
+            ...cloudRecord,
+            ...localRecord,
+            _id: cloudRecord._id,
+            id: recordId,
+            synced: true
+          })
+        } catch (err) {
+          console.error('合并单条记录失败', recordId, err)
+          failedSyncIds.push(recordId)
+          mergedMap.set(recordId, {
+            ...cloudRecord,
+            ...localRecord,
+            _id: cloudRecord && cloudRecord._id,
+            id: recordId,
+            synced: false
+          })
+        }
+      }
+
+      const merged = sortRecords(Array.from(mergedMap.values()))
 
       return {
         success: true,
         mergedRecords: merged,
         cloudCount: cloudRecords.length,
         localCount: localRecords.length,
-        mergedCount: merged.length
+        mergedCount: merged.length,
+        failedCount: failedSyncIds.length,
+        failedSyncIds
       }
     }
 
     if (action === 'clear') {
-      const cloudRecords = (await records
-        .where({
-          _openid: wxContext.OPENID
-        })
-        .get()).data
+      const cloudRecords = await fetchAllRecords(records, wxContext.OPENID)
 
       for (const record of cloudRecords) {
         try {

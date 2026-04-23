@@ -30,6 +30,7 @@ Page({
     startDate: '',
     endDate: '',
     exportRecords: [],
+    exportSourceRecords: [],
     exportStats: {
       blueOut: 0,
       blueIn: 0,
@@ -65,8 +66,9 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.loadRecords()
-    wx.stopPullDownRefresh()
+    this.loadRecords().finally(() => {
+      wx.stopPullDownRefresh()
+    })
   },
 
   onReachBottom() {
@@ -76,7 +78,7 @@ Page({
   },
 
   loadRecords() {
-    db.getAllRecords().then(sortedRecords => {
+    return db.getAllRecords().then(sortedRecords => {
       const grouped = this.groupByDate(sortedRecords)
       const displayGroupedRecords = grouped.slice(0, this.data.pageSize)
       const hasMore = grouped.length > this.data.pageSize
@@ -370,6 +372,7 @@ Page({
       showExportModal: true,
       startDate: dates[0],
       endDate: dates[dates.length - 1],
+      exportSourceRecords: records,
       exportRecords: records,
       exportStats: this.calculateStats(records)
     })
@@ -405,6 +408,7 @@ Page({
       showExportModal: false,
       startDate: '',
       endDate: '',
+      exportSourceRecords: [],
       exportRecords: [],
       exportStats: { blueOut: 0, blueIn: 0, redOut: 0, redIn: 0 }
     })
@@ -507,10 +511,10 @@ Page({
   },
 
   filterExportRecords() {
-    const { records, startDate, endDate } = this.data
+    const { exportSourceRecords, startDate, endDate } = this.data
     if (!startDate || !endDate) return
 
-    const filtered = records.filter(r => {
+    const filtered = exportSourceRecords.filter(r => {
       return r.date >= startDate && r.date <= endDate
     })
 

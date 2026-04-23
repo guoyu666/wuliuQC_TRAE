@@ -103,13 +103,17 @@ Page({
         const date = new Date(parseInt(year), parseInt(month) - 2, 1)
         const newYear = date.getFullYear()
         const newMonth = String(date.getMonth() + 1).padStart(2, '0')
-        this.setData({ selectedMonth: `${newYear}-${newMonth}` })
+        this.setData({ selectedMonth: `${newYear}-${newMonth}` }, () => {
+          this.loadData()
+          this.animateBarsIn()
+        })
       } else {
         const newYear = parseInt(this.data.selectedYear) - 1
-        this.setData({ selectedYear: newYear.toString() })
+        this.setData({ selectedYear: newYear.toString() }, () => {
+          this.loadData()
+          this.animateBarsIn()
+        })
       }
-      this.loadData()
-      this.animateBarsIn()
     }, 400)
   },
 
@@ -121,12 +125,16 @@ Page({
       const month = String(now.getMonth() + 1).padStart(2, '0')
       
       if (this.data.currentTab === 'month') {
-        this.setData({ selectedMonth: `${year}-${month}` })
+        this.setData({ selectedMonth: `${year}-${month}` }, () => {
+          this.loadData()
+          this.animateBarsIn()
+        })
       } else {
-        this.setData({ selectedYear: year.toString() })
+        this.setData({ selectedYear: year.toString() }, () => {
+          this.loadData()
+          this.animateBarsIn()
+        })
       }
-      this.loadData()
-      this.animateBarsIn()
     }, 400)
   },
 
@@ -138,13 +146,17 @@ Page({
         const date = new Date(parseInt(year), parseInt(month), 1)
         const newYear = date.getFullYear()
         const newMonth = String(date.getMonth() + 1).padStart(2, '0')
-        this.setData({ selectedMonth: `${newYear}-${newMonth}` })
+        this.setData({ selectedMonth: `${newYear}-${newMonth}` }, () => {
+          this.loadData()
+          this.animateBarsIn()
+        })
       } else {
         const newYear = parseInt(this.data.selectedYear) + 1
-        this.setData({ selectedYear: newYear.toString() })
+        this.setData({ selectedYear: newYear.toString() }, () => {
+          this.loadData()
+          this.animateBarsIn()
+        })
       }
-      this.loadData()
-      this.animateBarsIn()
     }, 400)
   },
 

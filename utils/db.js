@@ -2,6 +2,117 @@ const util = require('./util.js')
 
 let openid = null
 let isCloudEnabled = false
+const CLOUD_FUNCTION_NAME = 'syncRecords'
+const CLOUD_CACHE_KEY = 'lastCloudFetchAt'
+const CLOUD_FETCH_INTERVAL = 60 * 1000
+
+function getStoredRecords() {
+  return wx.getStorageSync('records') || []
+}
+
+function saveStoredRecords(records) {
+  wx.setStorageSync('records', records)
+}
+
+function getLastCloudFetchAt() {
+  return wx.getStorageSync(CLOUD_CACHE_KEY) || 0
+}
+
+function setLastCloudFetchAt(timestamp) {
+  wx.setStorageSync(CLOUD_CACHE_KEY, timestamp)
+}
+
+function formatRecordTime(value) {
+  if (!value) return ''
+
+  if (typeof value === 'string') {
+    return value
+  }
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return ''
+  }
+
+  return util.formatTime(parsed)
+}
+
+function normalizeRecord(record, syncedFallback = false) {
+  if (!record) return null
+
+  return {
+    ...record,
+    createTime: formatRecordTime(record.createTime),
+    synced: typeof record.synced === 'boolean' ? record.synced : syncedFallback
+  }
+}
+
+function sortRecords(records) {
+  return records.sort((a, b) => new Date(b.createTime) - new Date(a.createTime))
+}
+
+function mergeRecords(localRecords, cloudRecords) {
+  const mergedMap = new Map()
+
+  cloudRecords.forEach((record, index) => {
+    const normalized = normalizeRecord(record, true)
+    const key = normalized.id || normalized._id || `cloud-${index}`
+    mergedMap.set(key, normalized)
+  })
+
+  localRecords.forEach((record, index) => {
+    const normalized = normalizeRecord(record, false)
+    const key = normalized.id || normalized._id || `local-${index}`
+    const existing = mergedMap.get(key)
+
+    if (!existing) {
+      mergedMap.set(key, normalized)
+      return
+    }
+
+    if (normalized.synced === false) {
+      mergedMap.set(key, {
+        ...existing,
+        ...normalized,
+        _id: existing._id || normalized._id,
+        synced: false
+      })
+    }
+  })
+
+  return sortRecords(Array.from(mergedMap.values()))
+}
+
+function buildCloudUpdateData(source, includeCreateTime = false) {
+  const data = {}
+  const fields = [
+    'id',
+    'date',
+    'routeName',
+    'plateNumber',
+    'sendBlueOut',
+    'sendRedOut',
+    'blueOut',
+    'blueIn',
+    'redOut',
+    'redIn',
+    'remark'
+  ]
+
+  fields.forEach(field => {
+    if (Object.prototype.hasOwnProperty.call(source, field)) {
+      data[field] = source[field]
+    }
+  })
+
+  if (includeCreateTime && source.createTime) {
+    const parsed = new Date(source.createTime)
+    data.createTime = Number.isNaN(parsed.getTime()) ? new Date() : parsed
+  }
+
+  data.syncTime = new Date()
+  return data
+}
 
 function setOpenid(id) {
   openid = id
@@ -65,7 +176,7 @@ async function initCloud() {
 }
 
 async function addRecord(record) {
-  const localRecords = wx.getStorageSync('records') || []
+  const localRecords = getStoredRecords()
   const newRecord = {
     ...record,
     id: Date.now().toString(),
@@ -74,7 +185,7 @@ async function addRecord(record) {
   }
 
   localRecords.push(newRecord)
-  wx.setStorageSync('records', localRecords)
+  saveStoredRecords(localRecords)
 
   if (isCloudEnabled && openid) {
     try {
@@ -82,19 +193,7 @@ async function addRecord(record) {
       await db.collection('records').add({
         data: {
           _openid: openid,
-          id: newRecord.id,
-          date: newRecord.date,
-          routeName: newRecord.routeName,
-          plateNumber: newRecord.plateNumber,
-          sendBlueOut: newRecord.sendBlueOut || 0,
-          sendRedOut: newRecord.sendRedOut || 0,
-          blueOut: newRecord.blueOut,
-          blueIn: newRecord.blueIn,
-          redOut: newRecord.redOut,
-          redIn: newRecord.redIn,
-          remark: newRecord.remark,
-          createTime: new Date(newRecord.createTime),
-          syncTime: new Date()
+          ...buildCloudUpdateData(newRecord, true)
         }
       })
 
@@ -102,7 +201,7 @@ async function addRecord(record) {
       const index = localRecords.findIndex(r => r.id === newRecord.id)
       if (index !== -1) {
         localRecords[index] = newRecord
-        wx.setStorageSync('records', localRecords)
+        saveStoredRecords(localRecords)
       }
 
       return { success: true, id: newRecord.id, synced: true }
@@ -117,54 +216,49 @@ async function addRecord(record) {
 
 async function getTodayRecords() {
   const today = util.formatDate(new Date())
-  const records = wx.getStorageSync('records') || []
+  const records = getStoredRecords()
   const todayRecords = records.filter(r => r.date === today)
   return todayRecords
 }
 
 async function getAllRecords() {
-  if (isCloudEnabled && openid) {
+  const localRecords = getStoredRecords()
+  const shouldUseLocalFirst = localRecords.length > 0
+  const lastCloudFetchAt = getLastCloudFetchAt()
+  const shouldRefreshCloud = Date.now() - lastCloudFetchAt >= CLOUD_FETCH_INTERVAL
+
+  if (isCloudEnabled && openid && (!shouldUseLocalFirst || shouldRefreshCloud)) {
     try {
-      const db = wx.cloud.database()
-      const res = await db.collection('records')
-        .where({ _openid: openid })
-        .orderBy('createTime', 'desc')
-        .get()
+      const res = await wx.cloud.callFunction({
+        name: CLOUD_FUNCTION_NAME,
+        data: {
+          action: 'download'
+        }
+      })
 
-      if (res.data && res.data.length > 0) {
-        const cloudRecords = res.data.map(r => ({
-          id: r.id || r._id,
-          date: r.date,
-          routeName: r.routeName,
-          plateNumber: r.plateNumber,
-          sendBlueOut: r.sendBlueOut || 0,
-          sendRedOut: r.sendRedOut || 0,
-          blueOut: r.blueOut,
-          blueIn: r.blueIn,
-          redOut: r.redOut,
-          redIn: r.redIn,
-          remark: r.remark,
-          createTime: r.createTime,
-          synced: true,
-          _id: r._id
-        }))
-
-        wx.setStorageSync('records', cloudRecords)
-        return cloudRecords
+      if (res.result && res.result.success) {
+        const cloudRecords = (res.result.records || []).map(record => normalizeRecord({
+          ...record,
+          id: record.id || record._id,
+          synced: true
+        }, true))
+        const mergedRecords = mergeRecords(localRecords, cloudRecords)
+        saveStoredRecords(mergedRecords)
+        setLastCloudFetchAt(Date.now())
+        return mergedRecords
       }
     } catch (err) {
       console.log('云端获取失败，使用本地', err)
     }
   }
 
-  const records = wx.getStorageSync('records') || []
-  return records.sort((a, b) => new Date(b.createTime) - new Date(a.createTime))
+  return sortRecords(localRecords)
 }
 
 async function deleteRecord(id) {
-  const records = wx.getStorageSync('records') || []
+  const records = getStoredRecords()
   const newRecords = records.filter(r => r.id !== id)
-  wx.setStorageSync('records', newRecords)
+  saveStoredRecords(newRecords)
 
   if (isCloudEnabled && openid) {
     try {
@@ -188,14 +282,14 @@ async function deleteRecord(id) {
 }
 
 async function updateRecord(id, updates) {
-  const records = wx.getStorageSync('records') || []
+  const records = getStoredRecords()
   const newRecords = records.map(r => {
     if (r.id === id) {
       return { ...r, ...updates, synced: false }
     }
     return r
   })
-  wx.setStorageSync('records', newRecords)
+  saveStoredRecords(newRecords)
 
   if (isCloudEnabled && openid) {
     try {
@@ -207,26 +301,33 @@ async function updateRecord(id, updates) {
         })
         .get()
 
+      const cloudData = buildCloudUpdateData(updates)
+
       if (cloudRecords.data && cloudRecords.data.length > 0) {
         await db.collection('records').doc(cloudRecords.data[0]._id).update({
-          data: {
-            routeName: updates.routeName,
-            plateNumber: updates.plateNumber,
-            sendBlueOut: updates.sendBlueOut || 0,
-            sendRedOut: updates.sendRedOut || 0,
-            blueOut: updates.blueOut,
-            blueIn: updates.blueIn,
-            redOut: updates.redOut,
-            redIn: updates.redIn,
-            remark: updates.remark,
-            syncTime: new Date()
-          }
+          data: cloudData
         })
 
         const index = newRecords.findIndex(r => r.id === id)
         if (index !== -1) {
           newRecords[index].synced = true
-          wx.setStorageSync('records', newRecords)
+          saveStoredRecords(newRecords)
+        }
+      } else {
+        const recordToCreate = newRecords.find(r => r.id === id)
+        if (recordToCreate) {
+          await db.collection('records').add({
+            data: {
+              _openid: openid,
+              ...buildCloudUpdateData(recordToCreate, true)
+            }
+          })
+
+          const index = newRecords.findIndex(r => r.id === id)
+          if (index !== -1) {
+            newRecords[index].synced = true
+            saveStoredRecords(newRecords)
+          }
         }
       }
     } catch (err) {
@@ -238,7 +339,7 @@ async function updateRecord(id, updates) {
 }
 
 async function getRecordById(id) {
-  const records = wx.getStorageSync('records') || []
+  const records = getStoredRecords()
   return records.find(r => r.id === id) || null
 }
 
@@ -256,14 +357,14 @@ async function syncRecords() {
       name: 'syncRecords',
       data: {
         action: 'merge',
-        localRecords: wx.getStorageSync('records') || []
+        localRecords: getStoredRecords()
       }
     })
 
     if (result.result && result.result.success) {
-      const mergedRecords = result.result.mergedRecords
+      const mergedRecords = (result.result.mergedRecords || []).map(record => normalizeRecord(record, true))
 
-      wx.setStorageSync('records', mergedRecords)
+      saveStoredRecords(mergedRecords)
 
       return {
         success: true,
@@ -290,7 +391,7 @@ async function syncRecords() {
 }
 
 function getSyncStatus() {
-  const records = wx.getStorageSync('records') || []
+  const records = getStoredRecords()
   const syncedCount = records.filter(r => r.synced).length
   return {
     total: records.length,
@@ -347,7 +448,7 @@ function deletePlate(plateNumber) {
 }
 
 function exportAllData() {
-  const records = wx.getStorageSync('records') || []
+  const records = getStoredRecords()
   const routes = wx.getStorageSync('routes') || []
   const plates = wx.getStorageSync('plates') || []
   const backupData = {
@@ -395,7 +496,7 @@ function exportRecordsToCSV(records) {
     .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
     .join('\n')
   
-  return csvContent
+  return `\uFEFF${csvContent}`
 }
 
 module.exports = {
