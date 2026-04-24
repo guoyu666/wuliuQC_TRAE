@@ -407,15 +407,20 @@ Page({
       data: jsonStr,
       encoding: 'utf8',
       success: () => {
-        wx.shareFileMessage({
+        wx.openDocument({
           filePath: savedFilePath,
-          fileName: filename,
+          fileType: 'json',
           success: () => {
             feedback.success()
-            wx.showToast({ title: '备份成功', icon: 'success' })
+            wx.showToast({ title: '备份已生成', icon: 'success' })
           },
-          fail: (err) => {
-            wx.showToast({ title: '分享失败', icon: 'none' })
+          fail: () => {
+            feedback.success()
+            wx.showModal({
+              title: '已生成文件',
+              content: 'JSON 备份文件已生成，但当前设备无法直接打开。可稍后在聊天或文件中转发该文件。',
+              showCancel: false
+            })
           }
         })
       },
@@ -451,7 +456,13 @@ Page({
                       routeList: db.getRoutes(),
                       plateList: db.getPlates()
                     })
-                    this.loadRecords()
+                    if (db.isLoggedIn()) {
+                      db.syncRecords().finally(() => {
+                        this.loadRecords(true)
+                      })
+                    } else {
+                      this.loadRecords()
+                    }
                     wx.showToast({ title: '恢复成功', icon: 'success' })
                   } else {
                     wx.showToast({ title: result.message, icon: 'none' })
@@ -508,7 +519,7 @@ Page({
   },
 
   exportRecords() {
-    const { exportRecords, startDate, endDate } = this.data
+    const { exportRecords } = this.data
 
     if (exportRecords.length === 0) {
       wx.showToast({
@@ -518,27 +529,31 @@ Page({
       return
     }
 
-    const csvContent = db.exportRecordsToCSV(exportRecords)
+    const excelContent = db.exportRecordsToExcel(exportRecords)
     const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-    const filename = `records_${timestamp}.csv`
+    const filename = `records_${timestamp}.xls`
 
     const fs = wx.getFileSystemManager()
     const savedFilePath = `${wx.env.USER_DATA_PATH}/${filename}`
 
     fs.writeFile({
       filePath: savedFilePath,
-      data: csvContent,
+      data: excelContent,
       encoding: 'utf8',
       success: () => {
         feedback.success()
-        wx.shareFileMessage({
+        wx.openDocument({
           filePath: savedFilePath,
-          fileName: filename,
+          fileType: 'xls',
           success: () => {
-            wx.showToast({ title: '导出成功', icon: 'success' })
+            wx.showToast({ title: 'Excel已生成', icon: 'success' })
           },
           fail: () => {
-            wx.showToast({ title: '分享失败', icon: 'none' })
+            wx.showModal({
+              title: '已生成文件',
+              content: 'Excel 文件已生成，但当前设备无法直接打开。可稍后在聊天或文件中转发该文件。',
+              showCancel: false
+            })
           }
         })
       },

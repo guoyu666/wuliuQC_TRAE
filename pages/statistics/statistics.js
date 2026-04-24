@@ -41,8 +41,6 @@ Page({
       routeList: ['全部', ...db.getRoutes()],
       isDarkTheme: theme.isDark
     })
-    
-    this.loadData()
   },
 
   onShow() {
@@ -54,8 +52,9 @@ Page({
       routeList,
       routeIndex: routeIndex >= 0 ? routeIndex : 0,
       selectedRoute: routeIndex > 0 ? routeList[routeIndex] : ''
+    }, () => {
+      this.loadData(true)
     })
-    this.loadData(true)
   },
 
   switchTab(e) {

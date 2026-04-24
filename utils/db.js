@@ -4,7 +4,45 @@ let openid = null
 let isCloudEnabled = false
 const CLOUD_FUNCTION_NAME = 'syncRecords'
 const CLOUD_CACHE_KEY = 'lastCloudFetchAt'
+const CLOUD_REPLACE_KEY = 'pendingCloudReplace'
 const CLOUD_FETCH_INTERVAL = 60 * 1000
+
+function parseRecordTime(value) {
+  if (!value) return 0
+
+  if (value instanceof Date) {
+    const time = value.getTime()
+    return Number.isNaN(time) ? 0 : time
+  }
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.includes(' ') ? value.replace(/-/g, '/').replace('T', ' ') : value
+    const parsed = new Date(normalized)
+    const time = parsed.getTime()
+    return Number.isNaN(time) ? 0 : time
+  }
+
+  const parsed = new Date(value)
+  const time = parsed.getTime()
+  return Number.isNaN(time) ? 0 : time
+}
+
+function getRecordVersion(record) {
+  return Math.max(
+    parseRecordTime(record && record.updatedAt),
+    parseRecordTime(record && record.syncTime),
+    parseRecordTime(record && record.deletedAt),
+    parseRecordTime(record && record.createTime)
+  )
+}
+
+function getVisibleRecords(records) {
+  return records.filter(record => !record.deletedAt)
+}
 
 function getStoredRecords() {
   return wx.getStorageSync('records') || []
@@ -20,6 +58,14 @@ function getLastCloudFetchAt() {
 
 function setLastCloudFetchAt(timestamp) {
   wx.setStorageSync(CLOUD_CACHE_KEY, timestamp)
+}
+
+function hasPendingCloudReplace() {
+  return !!wx.getStorageSync(CLOUD_REPLACE_KEY)
+}
+
+function setPendingCloudReplace(pending) {
+  wx.setStorageSync(CLOUD_REPLACE_KEY, pending)
 }
 
 function formatRecordTime(value) {
@@ -43,12 +89,13 @@ function normalizeRecord(record, syncedFallback = false) {
   return {
     ...record,
     createTime: formatRecordTime(record.createTime),
+    updatedAt: record.updatedAt || getRecordVersion(record) || Date.now(),
     synced: typeof record.synced === 'boolean' ? record.synced : syncedFallback
   }
 }
 
 function sortRecords(records) {
-  return records.sort((a, b) => new Date(b.createTime) - new Date(a.createTime))
+  return records.sort((a, b) => getRecordVersion(b) - getRecordVersion(a))
 }
 
 function mergeRecords(localRecords, cloudRecords) {
@@ -56,6 +103,7 @@ function mergeRecords(localRecords, cloudRecords) {
 
   cloudRecords.forEach((record, index) => {
     const normalized = normalizeRecord(record, true)
+    if (normalized.deletedAt) return
     const key = normalized.id || normalized._id || `cloud-${index}`
     mergedMap.set(key, normalized)
   })
@@ -77,6 +125,16 @@ function mergeRecords(localRecords, cloudRecords) {
         _id: existing._id || normalized._id,
         synced: false
       })
+      return
+    }
+
+    if (getRecordVersion(normalized) > getRecordVersion(existing)) {
+      mergedMap.set(key, {
+        ...existing,
+        ...normalized,
+        _id: existing._id || normalized._id,
+        synced: true
+      })
     }
   })
 
@@ -96,7 +154,9 @@ function buildCloudUpdateData(source, includeCreateTime = false) {
     'blueIn',
     'redOut',
     'redIn',
-    'remark'
+    'remark',
+    'updatedAt',
+    'deletedAt'
   ]
 
   fields.forEach(field => {
@@ -106,8 +166,13 @@ function buildCloudUpdateData(source, includeCreateTime = false) {
   })
 
   if (includeCreateTime && source.createTime) {
-    const parsed = new Date(source.createTime)
+    const timestamp = parseRecordTime(source.createTime)
+    const parsed = timestamp ? new Date(timestamp) : new Date()
     data.createTime = Number.isNaN(parsed.getTime()) ? new Date() : parsed
+  }
+
+  if (!data.updatedAt) {
+    data.updatedAt = Date.now()
   }
 
   data.syncTime = new Date()
@@ -184,6 +249,7 @@ async function addRecord(record) {
     ...record,
     id: Date.now().toString(),
     createTime: util.formatTime(new Date()),
+    updatedAt: Date.now(),
     synced: false
   }
 
@@ -220,7 +286,7 @@ async function addRecord(record) {
 async function getTodayRecords() {
   const today = util.formatDate(new Date())
   const records = getStoredRecords()
-  const todayRecords = records.filter(r => r.date === today)
+  const todayRecords = getVisibleRecords(records).filter(r => r.date === today)
   return todayRecords
 }
 
@@ -230,6 +296,10 @@ async function getAllRecords(options = {}) {
   const shouldUseLocalFirst = localRecords.length > 0
   const lastCloudFetchAt = getLastCloudFetchAt()
   const shouldRefreshCloud = Date.now() - lastCloudFetchAt >= CLOUD_FETCH_INTERVAL
+
+  if (hasPendingCloudReplace()) {
+    return getVisibleRecords(sortRecords(localRecords))
+  }
 
   if (isCloudEnabled && openid && (forceRefresh || !shouldUseLocalFirst || shouldRefreshCloud)) {
     try {
@@ -249,47 +319,27 @@ async function getAllRecords(options = {}) {
         const mergedRecords = mergeRecords(localRecords, cloudRecords)
         saveStoredRecords(mergedRecords)
         setLastCloudFetchAt(Date.now())
-        return mergedRecords
+        return getVisibleRecords(mergedRecords)
       }
     } catch (err) {
       console.log('云端获取失败，使用本地', err)
     }
   }
 
-  return sortRecords(localRecords)
+  return getVisibleRecords(sortRecords(localRecords))
 }
 
 async function deleteRecord(id) {
   const records = getStoredRecords()
-  const newRecords = records.filter(r => r.id !== id)
-  saveStoredRecords(newRecords)
-
-  if (isCloudEnabled && openid) {
-    try {
-      const db = wx.cloud.database()
-      const cloudRecords = await db.collection('records')
-        .where({
-          _openid: openid,
-          id: id
-        })
-        .get()
-
-      if (cloudRecords.data && cloudRecords.data.length > 0) {
-        await db.collection('records').doc(cloudRecords.data[0]._id).remove()
-      }
-    } catch (err) {
-      console.error('云端删除失败', err)
-    }
-  }
-
-  return { success: true }
-}
-
-async function updateRecord(id, updates) {
-  const records = getStoredRecords()
-  const newRecords = records.map(r => {
+  const deletingAt = Date.now()
+  let newRecords = records.map(r => {
     if (r.id === id) {
-      return { ...r, ...updates, synced: false }
+      return {
+        ...r,
+        deletedAt: deletingAt,
+        updatedAt: deletingAt,
+        synced: false
+      }
     }
     return r
   })
@@ -305,7 +355,44 @@ async function updateRecord(id, updates) {
         })
         .get()
 
-      const cloudData = buildCloudUpdateData(updates)
+      if (cloudRecords.data && cloudRecords.data.length > 0) {
+        await db.collection('records').doc(cloudRecords.data[0]._id).remove()
+      }
+      newRecords = getStoredRecords().filter(r => r.id !== id)
+      saveStoredRecords(newRecords)
+    } catch (err) {
+      console.error('云端删除失败', err)
+    }
+  } else {
+    newRecords = records.filter(r => r.id !== id)
+    saveStoredRecords(newRecords)
+  }
+
+  return { success: true }
+}
+
+async function updateRecord(id, updates) {
+  const records = getStoredRecords()
+  const newRecords = records.map(r => {
+    if (r.id === id) {
+      return { ...r, ...updates, updatedAt: Date.now(), synced: false }
+    }
+    return r
+  })
+  saveStoredRecords(newRecords)
+
+  if (isCloudEnabled && openid) {
+    try {
+      const db = wx.cloud.database()
+      const cloudRecords = await db.collection('records')
+        .where({
+          _openid: openid,
+          id: id
+        })
+        .get()
+
+      const updatedRecord = newRecords.find(r => r.id === id)
+      const cloudData = buildCloudUpdateData(updatedRecord || updates)
 
       if (cloudRecords.data && cloudRecords.data.length > 0) {
         await db.collection('records').doc(cloudRecords.data[0]._id).update({
@@ -357,18 +444,23 @@ async function syncRecords() {
   }
 
   try {
+    const pendingCloudReplace = hasPendingCloudReplace()
     const result = await wx.cloud.callFunction({
       name: 'syncRecords',
       data: {
-        action: 'merge',
-        localRecords: getStoredRecords()
+        action: pendingCloudReplace ? 'replace' : 'merge',
+        localRecords: pendingCloudReplace ? getVisibleRecords(getStoredRecords()) : getStoredRecords()
       }
     })
 
     if (result.result && result.result.success) {
-      const mergedRecords = (result.result.mergedRecords || []).map(record => normalizeRecord(record, true))
+      const mergedRecords = sortRecords((result.result.mergedRecords || []).map(record => normalizeRecord(record, true)))
 
       saveStoredRecords(mergedRecords)
+      if (!pendingCloudReplace || !result.result.failedCount) {
+        setPendingCloudReplace(false)
+      }
+      setLastCloudFetchAt(Date.now())
 
       return {
         success: true,
@@ -471,9 +563,18 @@ function importAllData(jsonStr) {
     if (!data.version || !data.records) {
       return { success: false, message: '无效的备份文件格式' }
     }
-    wx.setStorageSync('records', data.records || [])
+    const importedAt = Date.now()
+    const importedRecords = (data.records || []).map((record, index) => normalizeRecord({
+      ...record,
+      id: record.id || record._id || `${importedAt}-${index}`,
+      updatedAt: importedAt,
+      synced: false
+    }, false))
+    wx.setStorageSync('records', sortRecords(importedRecords))
     wx.setStorageSync('routes', data.routes || [])
     wx.setStorageSync('plates', data.plates || [])
+    setPendingCloudReplace(true)
+    setLastCloudFetchAt(Date.now())
     return { success: true, message: '恢复成功' }
   } catch (e) {
     return { success: false, message: '解析备份文件失败' }
@@ -503,6 +604,53 @@ function exportRecordsToCSV(records) {
   return `\uFEFF${csvContent}`
 }
 
+function escapeExcelXml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+}
+
+function exportRecordsToExcel(records) {
+  const headers = ['日期', '线路', '车牌', '物流蓝出', '物流红出', '蓝发出', '蓝收回', '红发出', '红收回', '备注', '创建时间']
+  const rows = records.map(r => [
+    r.date || '',
+    r.routeName || '',
+    r.plateNumber || '',
+    r.sendBlueOut || 0,
+    r.sendRedOut || 0,
+    r.blueOut || 0,
+    r.blueIn || 0,
+    r.redOut || 0,
+    r.redIn || 0,
+    r.remark || '',
+    r.createTime || ''
+  ])
+
+  const buildRow = row => {
+    return `<Row>${row.map(cell => `<Cell><Data ss:Type="${typeof cell === 'number' ? 'Number' : 'String'}">${escapeExcelXml(cell)}</Data></Cell>`).join('')}</Row>`
+  }
+
+  return [
+    '<?xml version="1.0"?>',
+    '<?mso-application progid="Excel.Sheet"?>',
+    '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"',
+    ' xmlns:o="urn:schemas-microsoft-com:office:office"',
+    ' xmlns:x="urn:schemas-microsoft-com:office:excel"',
+    ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"',
+    ' xmlns:html="http://www.w3.org/TR/REC-html40">',
+    ' <Worksheet ss:Name="历史记录">',
+    '  <Table>',
+    `   ${buildRow(headers)}`,
+    ...rows.map(row => `   ${buildRow(row)}`),
+    '  </Table>',
+    ' </Worksheet>',
+    '</Workbook>'
+  ].join('\n')
+}
+
 module.exports = {
   initCloud,
   setOpenid,
@@ -526,5 +674,6 @@ module.exports = {
   deletePlate,
   exportAllData,
   importAllData,
-  exportRecordsToCSV
+  exportRecordsToCSV,
+  exportRecordsToExcel
 }

@@ -3,18 +3,40 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const PAGE_SIZE = 100
 
 function normalizeTime(value) {
-  if (!value) return new Date(0)
+  if (!value) return 0
 
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) {
-    return new Date(0)
+  if (value instanceof Date) {
+    const time = value.getTime()
+    return Number.isNaN(time) ? 0 : time
   }
 
-  return parsed
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.includes(' ') ? value.replace(/-/g, '/').replace('T', ' ') : value
+    const parsed = new Date(normalized)
+    const time = parsed.getTime()
+    return Number.isNaN(time) ? 0 : time
+  }
+
+  const parsed = new Date(value)
+  const time = parsed.getTime()
+  return Number.isNaN(time) ? 0 : time
+}
+
+function getRecordVersion(record) {
+  return Math.max(
+    normalizeTime(record && record.updatedAt),
+    normalizeTime(record && record.syncTime),
+    normalizeTime(record && record.deletedAt),
+    normalizeTime(record && record.createTime)
+  )
 }
 
 function sortRecords(records) {
-  return records.sort((a, b) => normalizeTime(b.createTime) - normalizeTime(a.createTime))
+  return records.sort((a, b) => getRecordVersion(b) - getRecordVersion(a))
 }
 
 function buildRecordData(record, includeCreateTime = false) {
@@ -30,7 +52,9 @@ function buildRecordData(record, includeCreateTime = false) {
     'blueIn',
     'redOut',
     'redIn',
-    'remark'
+    'remark',
+    'updatedAt',
+    'deletedAt'
   ]
 
   fields.forEach(field => {
@@ -40,8 +64,13 @@ function buildRecordData(record, includeCreateTime = false) {
   })
 
   if (includeCreateTime && record.createTime) {
-    const parsed = new Date(record.createTime)
+    const timestamp = normalizeTime(record.createTime)
+    const parsed = timestamp ? new Date(timestamp) : new Date()
     data.createTime = Number.isNaN(parsed.getTime()) ? new Date() : parsed
+  }
+
+  if (!data.updatedAt) {
+    data.updatedAt = Date.now()
   }
 
   data.syncTime = new Date()
@@ -116,6 +145,61 @@ exports.main = async (event, context) => {
       }
     }
 
+    if (action === 'replace') {
+      if (!localRecords || !Array.isArray(localRecords)) {
+        return {
+          success: false,
+          message: '无效的本地数据'
+        }
+      }
+
+      const cloudRecords = await fetchAllRecords(records, wxContext.OPENID)
+      for (const record of cloudRecords) {
+        await records.doc(record._id).remove()
+      }
+
+      const mergedRecords = []
+      let failed = 0
+
+      for (const localRecord of localRecords) {
+        if (!localRecord.id || localRecord.deletedAt) {
+          continue
+        }
+
+        try {
+          const createRes = await records.add({
+            data: {
+              _openid: wxContext.OPENID,
+              ...buildRecordData(localRecord, true)
+            }
+          })
+          mergedRecords.push({
+            ...localRecord,
+            _id: createRes._id,
+            synced: true
+          })
+        } catch (err) {
+          console.error('替换上传单条记录失败', localRecord.id, err)
+          failed++
+          mergedRecords.push({
+            ...localRecord,
+            synced: false
+          })
+        }
+      }
+
+      const merged = sortRecords(mergedRecords)
+
+      return {
+        success: true,
+        mergedRecords: merged,
+        cloudCount: cloudRecords.length,
+        localCount: localRecords.length,
+        mergedCount: merged.length,
+        failedCount: failed
+      }
+    }
+
     if (action === 'merge') {
       if (!localRecords || !Array.isArray(localRecords)) {
         return {
@@ -148,6 +232,21 @@ exports.main = async (event, context) => {
         const cloudRecord = cloudMap.get(recordId)
 
         try {
+          if (localRecord.deletedAt) {
+            if (cloudRecord) {
+              const localVersion = getRecordVersion(localRecord)
+              const cloudVersion = getRecordVersion(cloudRecord)
+              if (localRecord.synced === false || localVersion >= cloudVersion) {
+                await records.doc(cloudRecord._id).remove()
+                mergedMap.delete(recordId)
+                continue
+              }
+            } else {
+              mergedMap.delete(recordId)
+              continue
+            }
+          }
+
           if (!cloudRecord) {
             const createRes = await records.add({
               data: {
@@ -165,15 +264,44 @@ exports.main = async (event, context) => {
             continue
           }
 
+          const localVersion = getRecordVersion(localRecord)
+          const cloudVersion = getRecordVersion(cloudRecord)
+
           if (localRecord.synced === false) {
-            await records.doc(cloudRecord._id).update({
-              data: buildRecordData(localRecord)
+            if (localVersion >= cloudVersion) {
+              await records.doc(cloudRecord._id).update({
+                data: buildRecordData(localRecord)
+              })
+              mergedMap.set(recordId, {
+                ...cloudRecord,
+                ...localRecord,
+                _id: cloudRecord._id,
+                id: recordId,
+                synced: true
+              })
+            } else {
+              mergedMap.set(recordId, {
+                ...cloudRecord,
+                id: recordId,
+                synced: true
+              })
+            }
+            continue
+          }
+
+          if (localVersion > cloudVersion) {
+            mergedMap.set(recordId, {
+              ...cloudRecord,
+              ...localRecord,
+              _id: cloudRecord._id,
+              id: recordId,
+              synced: true
             })
+            continue
           }
 
           mergedMap.set(recordId, {
             ...cloudRecord,
-            ...localRecord,
             _id: cloudRecord._id,
             id: recordId,
             synced: true
