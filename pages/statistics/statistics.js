@@ -212,11 +212,15 @@ Page({
     feedback.light()
   },
 
+  isValidRecordDate(record) {
+    return record && typeof record.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(record.date)
+  },
+
   loadMonthData(records) {
     const { selectedMonth, selectedRoute } = this.data
     
     let filteredRecords = records.filter(r => {
-      return r.date.startsWith(selectedMonth)
+      return this.isValidRecordDate(r) && r.date.startsWith(selectedMonth)
     })
     
     if (selectedRoute) {
@@ -269,7 +273,7 @@ Page({
     const { selectedYear, selectedRoute } = this.data
     
     let filteredRecords = records.filter(r => {
-      return r.date.startsWith(selectedYear)
+      return this.isValidRecordDate(r) && r.date.startsWith(selectedYear)
     })
     
     if (selectedRoute) {

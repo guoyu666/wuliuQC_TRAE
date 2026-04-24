@@ -488,11 +488,15 @@ async function syncRecords() {
 
 function getSyncStatus() {
   const records = getStoredRecords()
-  const syncedCount = records.filter(r => r.synced).length
+  const visibleRecords = getVisibleRecords(records)
+  const pendingDeletes = records.length - visibleRecords.length
+  const syncedCount = visibleRecords.filter(r => r.synced).length
   return {
-    total: records.length,
+    total: visibleRecords.length,
+    visibleTotal: visibleRecords.length,
+    pendingDeletes,
     synced: syncedCount,
-    unsynced: records.length - syncedCount,
+    unsynced: visibleRecords.length - syncedCount,
     isLoggedIn: isCloudEnabled
   }
 }

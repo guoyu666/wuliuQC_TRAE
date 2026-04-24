@@ -58,7 +58,18 @@ Page({
   },
 
   onShow() {
-    this.setData({ isDarkTheme: theme.isDark })
+    const routeList = db.getRoutes()
+    const plateList = db.getPlates()
+    const routeIndex = routeList.indexOf(this.data.routeName)
+    const plateIndex = plateList.indexOf(this.data.plateNumber)
+
+    this.setData({
+      isDarkTheme: theme.isDark,
+      routeList,
+      plateList,
+      routeIndex,
+      plateIndex
+    })
     this.loadData()
   },
 

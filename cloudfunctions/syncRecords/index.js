@@ -77,7 +77,8 @@ function buildRecordData(record, includeCreateTime = false) {
   return data
 }
 
-async function fetchAllRecords(recordsCollection, openid) {
+async function fetchAllRecords(recordsCollection, openid, options = {}) {
+  const { includeStaged = false } = options
   const allRecords = []
   let skip = 0
 
@@ -97,7 +98,7 @@ async function fetchAllRecords(recordsCollection, openid) {
     skip += res.data.length
   }
 
-  return allRecords
+  return includeStaged ? allRecords : allRecords.filter(record => !record.replacing)
 }
 
 exports.main = async (event, context) => {
@@ -153,12 +154,17 @@ exports.main = async (event, context) => {
         }
       }
 
-      const cloudRecords = await fetchAllRecords(records, wxContext.OPENID)
-      for (const record of cloudRecords) {
+      const restoreBatchId = `restore_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      const allCloudRecords = await fetchAllRecords(records, wxContext.OPENID, { includeStaged: true })
+      const visibleCloudRecords = allCloudRecords.filter(record => !record.replacing)
+      const staleStagedRecords = allCloudRecords.filter(record => record.replacing)
+
+      for (const record of staleStagedRecords) {
         await records.doc(record._id).remove()
       }
 
       const mergedRecords = []
+      const stagedIds = []
       let failed = 0
 
       for (const localRecord of localRecords) {
@@ -170,9 +176,12 @@ exports.main = async (event, context) => {
           const createRes = await records.add({
             data: {
               _openid: wxContext.OPENID,
-              ...buildRecordData(localRecord, true)
+              ...buildRecordData(localRecord, true),
+              restoreBatchId,
+              replacing: true
             }
           })
+          stagedIds.push(createRes._id)
           mergedRecords.push({
             ...localRecord,
             _id: createRes._id,
@@ -188,12 +197,44 @@ exports.main = async (event, context) => {
         }
       }
 
+      if (failed > 0) {
+        for (const stagedId of stagedIds) {
+          try {
+            await records.doc(stagedId).remove()
+          } catch (err) {
+            console.error('清理失败恢复批次记录失败', stagedId, err)
+          }
+        }
+
+        return {
+          success: false,
+          message: '恢复数据上传不完整，已保留原云端数据',
+          mergedRecords,
+          cloudCount: visibleCloudRecords.length,
+          localCount: localRecords.length,
+          mergedCount: mergedRecords.length,
+          failedCount: failed
+        }
+      }
+
+      for (const record of visibleCloudRecords) {
+        await records.doc(record._id).remove()
+      }
+
+      for (const stagedId of stagedIds) {
+        await records.doc(stagedId).update({
+          data: {
+            replacing: false
+          }
+        })
+      }
+
       const merged = sortRecords(mergedRecords)
 
       return {
         success: true,
         mergedRecords: merged,
-        cloudCount: cloudRecords.length,
+        cloudCount: visibleCloudRecords.length,
         localCount: localRecords.length,
         mergedCount: merged.length,
         failedCount: failed
@@ -333,7 +374,7 @@ exports.main = async (event, context) => {
     }
 
     if (action === 'clear') {
-      const cloudRecords = await fetchAllRecords(records, wxContext.OPENID)
+      const cloudRecords = await fetchAllRecords(records, wxContext.OPENID, { includeStaged: true })
 
       for (const record of cloudRecords) {
         try {

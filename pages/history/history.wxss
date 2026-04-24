@@ -13,13 +13,13 @@
 
 .empty-text {
   font-size: 32rpx;
-  color: #333333;
+  color: var(--text-primary);
   margin-bottom: 12rpx;
 }
 
 .empty-hint {
   font-size: 26rpx;
-  color: #999999;
+  color: var(--text-muted);
 }
 
 .search-bar {
@@ -49,7 +49,7 @@
   line-height: 40rpx;
   text-align: center;
   font-size: 32rpx;
-  color: #999999;
+  color: var(--text-muted);
   opacity: 0;
   pointer-events: none;
 }
@@ -92,7 +92,7 @@
 
 .filter-label {
   font-size: 22rpx;
-  color: #999999;
+  color: var(--text-muted);
   margin-bottom: 8rpx;
 }
 
@@ -103,12 +103,12 @@
 }
 
 .filter-value.has-value {
-  color: #1976D2;
+  color: var(--blue-color);
 }
 
 .filter-gap {
   padding: 0 16rpx;
-  color: #999999;
+  color: var(--text-muted);
   font-size: 26rpx;
 }
 
@@ -117,7 +117,7 @@
   justify-content: flex-end;
   gap: 16rpx;
   padding-top: 16rpx;
-  border-top: 1rpx solid #E0E0E0;
+  border-top: 1rpx solid var(--border-color);
 }
 
 .filter-reset {
@@ -134,7 +134,7 @@
 
 .search-result-tip {
   font-size: 24rpx;
-  color: #666666;
+  color: var(--text-secondary);
   padding: 8rpx 0;
   margin-bottom: 8rpx;
 }
@@ -176,7 +176,7 @@
 .date-line {
   flex: 1;
   height: 1rpx;
-  background-color: #E0E0E0;
+  background-color: var(--border-color);
 }
 
 .date-badge {
@@ -184,7 +184,7 @@
   font-size: 24rpx;
   font-weight: 500;
   color: #FFFFFF;
-  background-color: #1976D2;
+  background-color: var(--blue-color);
   border-radius: 24rpx;
   margin: 0 20rpx;
 }
@@ -205,7 +205,7 @@
 
 .summary-label {
   font-size: 22rpx;
-  color: #666666;
+  color: var(--text-secondary);
   margin-bottom: 4rpx;
 }
 
@@ -215,11 +215,11 @@
 }
 
 .summary-item.blue .summary-value {
-  color: #1976D2;
+  color: var(--blue-color);
 }
 
 .summary-item.red .summary-value {
-  color: #D32F2F;
+  color: var(--red-color);
 }
 
 .record-items {
@@ -352,12 +352,12 @@
 
 .loading-text {
   font-size: 26rpx;
-  color: #999999;
+  color: var(--text-muted);
 }
 
 .no-more-text {
   font-size: 26rpx;
-  color: #BBBBBB;
+  color: var(--text-muted);
 }
 
 .modal-mask {
@@ -376,7 +376,7 @@
   left: 50%;
   transform: translate(-50%, -50%);
   width: 80%;
-  background-color: #FFFFFF;
+  background-color: var(--bg-card);
   border-radius: 16rpx;
   z-index: 101;
   overflow: hidden;
@@ -387,7 +387,7 @@
   font-weight: 600;
   text-align: center;
   padding: 32rpx 0;
-  border-bottom: 1rpx solid #EEEEEE;
+  border-bottom: 1rpx solid var(--border-color);
 }
 
 .modal-body {
@@ -406,24 +406,24 @@
 
 .date-label {
   font-size: 26rpx;
-  color: #666666;
+  color: var(--text-secondary);
   margin-bottom: 12rpx;
   text-align: center;
 }
 
 .date-picker {
-  background-color: #F5F5F5;
+  background-color: var(--bg-muted);
   border-radius: 8rpx;
   padding: 20rpx;
   text-align: center;
   font-size: 28rpx;
-  color: #333333;
+  color: var(--text-primary);
 }
 
 .export-preview {
   margin-top: 32rpx;
   padding: 24rpx;
-  background-color: #F5F5F5;
+  background-color: var(--bg-muted);
   border-radius: 8rpx;
 }
 
@@ -442,13 +442,13 @@
 
 .stat-item {
   font-size: 24rpx;
-  color: #666666;
+  color: var(--text-secondary);
   padding: 8rpx 16rpx;
 }
 
 .modal-footer {
   display: flex;
-  border-top: 1rpx solid #EEEEEE;
+  border-top: 1rpx solid var(--border-color);
 }
 
 .modal-btn {
@@ -459,12 +459,12 @@
 }
 
 .modal-btn.cancel {
-  color: #999999;
-  border-right: 1rpx solid #EEEEEE;
+  color: var(--text-muted);
+  border-right: 1rpx solid var(--border-color);
 }
 
 .modal-btn.confirm {
-  color: #1976D2;
+  color: var(--blue-color);
   font-weight: 500;
 }
 
@@ -488,19 +488,19 @@
 .backup-title {
   font-size: 28rpx;
   font-weight: 600;
-  color: #333333;
+  color: var(--text-primary);
   margin-bottom: 8rpx;
 }
 
 .backup-desc {
   font-size: 24rpx;
-  color: #666666;
+  color: var(--text-secondary);
   margin-bottom: 16rpx;
 }
 
 .backup-divider {
   height: 1rpx;
-  background-color: #EEEEEE;
+  background-color: var(--border-color);
   margin: 16rpx 0;
 }
 
@@ -541,11 +541,11 @@
 }
 
 .edit-label.blue {
-  color: #1976D2;
+  color: var(--blue-color);
 }
 
 .edit-label.red {
-  color: #D32F2F;
+  color: var(--red-color);
 }
 
 .edit-picker-row {
@@ -559,14 +559,14 @@
   line-height: 72rpx;
   padding: 0 16rpx;
   font-size: 26rpx;
-  color: #999999;
-  background-color: #F5F5F5;
+  color: var(--text-muted);
+  background-color: var(--bg-muted);
   border-radius: 8rpx;
   box-sizing: border-box;
 }
 
 .edit-picker-btn.has-value {
-  color: #333333;
+  color: var(--text-primary);
 }
 
 .edit-inline-input {
@@ -574,7 +574,7 @@
   height: 72rpx;
   padding: 0 12rpx;
   font-size: 24rpx;
-  background-color: #E3F2FD;
+  background-color: var(--blue-bg);
   border-radius: 8rpx;
   box-sizing: border-box;
 }
@@ -591,7 +591,7 @@
 
 .edit-name {
   font-size: 24rpx;
-  color: #666666;
+  color: var(--text-secondary);
   text-align: center;
   margin-bottom: 12rpx;
 }
@@ -600,7 +600,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #F5F5F5;
+  background-color: var(--bg-muted);
   border-radius: 8rpx;
   padding: 8rpx;
 }
@@ -612,8 +612,8 @@
   text-align: center;
   font-size: 32rpx;
   font-weight: bold;
-  color: #333333;
-  background-color: #FFFFFF;
+  color: var(--text-primary);
+  background-color: var(--bg-card);
   border-radius: 6rpx;
 }
 
@@ -623,7 +623,7 @@
   text-align: center;
   font-size: 28rpx;
   margin: 0 6rpx;
-  background-color: #FFFFFF;
+  background-color: var(--bg-card);
   border-radius: 6rpx;
 }
 
@@ -632,7 +632,7 @@
   min-height: 200rpx;
   padding: 16rpx;
   font-size: 28rpx;
-  background-color: #F5F5F5;
+  background-color: var(--bg-muted);
   border-radius: 8rpx;
   box-sizing: border-box;
 }
