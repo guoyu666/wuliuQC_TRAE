@@ -585,7 +585,7 @@ Page({
 
     const excelContent = db.exportRecordsToExcel(exportRecords)
     const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-    const filename = `records_${timestamp}.xls`
+    const filename = `records_${timestamp}.xlsx`
 
     const fs = wx.getFileSystemManager()
     const savedFilePath = `${wx.env.USER_DATA_PATH}/${filename}`
@@ -593,12 +593,11 @@ Page({
     fs.writeFile({
       filePath: savedFilePath,
       data: excelContent,
-      encoding: 'utf8',
       success: () => {
         feedback.success()
         wx.openDocument({
           filePath: savedFilePath,
-          fileType: 'xls',
+          fileType: 'xlsx',
           success: () => {
             wx.showToast({ title: 'Excel已生成', icon: 'success' })
           },
