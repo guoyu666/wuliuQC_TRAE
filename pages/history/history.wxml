@@ -107,11 +107,14 @@
       </view>
     </view>
     <view class="record-items">
-      <view class="record-item {{pressedRecordId === record.id ? 'is-pressed' : ''}}" wx:for="{{item.records}}" wx:for-item="record" wx:key="id" bindtouchstart="onRecordTouchStart" bindtouchend="onRecordTouchEnd" bindtouchcancel="onRecordTouchEnd" bindlongpress="onRecordLongPress" data-id="{{record.id}}">
-        <view class="record-content">
+      <view class="record-swipe {{swipedRecordId === record.id ? 'is-open' : ''}}" wx:for="{{item.records}}" wx:for-item="record" wx:key="id" bindtouchstart="onRecordTouchStart" bindtouchmove="onRecordTouchMove" bindtouchend="onRecordTouchEnd" bindtouchcancel="onRecordTouchEnd" data-id="{{record.id}}">
+        <view class="record-delete-action" catchtap="deleteRecord" data-id="{{record.id}}">
+          <view class="delete-icon">删除</view>
+        </view>
+        <view class="record-item" bindtap="closeSwipedRecord">
           <view class="record-header">
             <view class="record-route">{{record.routeName}}</view>
-            <view class="record-edit-tag" bindtap="editData" data-id="{{record.id}}">编辑</view>
+            <view class="record-edit-tag" catchtap="editData" data-id="{{record.id}}">编辑</view>
           </view>
           <view class="record-meta">
             <view class="record-plate">{{record.plateNumber}}</view>
@@ -127,7 +130,7 @@
             <view class="stat-chip neutral-chip" wx:if="{{record.sendBlueOut === 0 && record.sendRedOut === 0 && record.blueOut === 0 && record.blueIn === 0 && record.redOut === 0 && record.redIn === 0}}">仅备注</view>
           </view>
           <view class="record-remark" wx:if="{{record.remark}}">备注: {{record.remark}}</view>
-          <view class="record-hint">{{pressedRecordId === record.id ? '松手后确认删除' : '长按卡片可删除'}}</view>
+          <view class="record-hint">左滑可删除</view>
         </view>
       </view>
     </view>

@@ -47,7 +47,10 @@ Page({
     filterStartDate: '',
     filterEndDate: '',
     showBackupModal: false,
-    pressedRecordId: '',
+    swipedRecordId: '',
+    touchStartX: 0,
+    touchStartY: 0,
+    touchRecordId: '',
     syncStatus: null,
     isDarkTheme: false
   },
@@ -619,12 +622,14 @@ Page({
 
   deleteRecord(e) {
     const { id } = e.currentTarget.dataset
-    this.setData({ pressedRecordId: '' })
+    this.setData({
+      swipedRecordId: ''
+    })
     feedback.heavy()
 
     wx.showModal({
       title: '确认删除',
-      content: '长按已触发删除，确定要删除这条记录吗？',
+      content: '确定要删除这条记录吗？',
       success: (res) => {
         if (res.confirm) {
           db.deleteRecord(id).then((result) => {
@@ -647,19 +652,45 @@ Page({
 
   onRecordTouchStart(e) {
     const { id } = e.currentTarget.dataset
-    this.setData({ pressedRecordId: id })
+    const touch = e.touches && e.touches[0]
+    if (!touch) return
+
+    this.setData({
+      touchStartX: touch.clientX,
+      touchStartY: touch.clientY,
+      touchRecordId: id
+    })
   },
 
-  onRecordTouchEnd() {
-    if (this.data.pressedRecordId) {
-      this.setData({ pressedRecordId: '' })
+  onRecordTouchMove(e) {
+    const touch = e.touches && e.touches[0]
+    const { touchStartX, touchStartY, touchRecordId, swipedRecordId } = this.data
+    if (!touch || !touchRecordId) return
+
+    const deltaX = touch.clientX - touchStartX
+    const deltaY = touch.clientY - touchStartY
+    if (Math.abs(deltaX) < 36 || Math.abs(deltaX) < Math.abs(deltaY) * 1.2) return
+
+    if (deltaX < 0 && swipedRecordId !== touchRecordId) {
+      feedback.light()
+      this.setData({ swipedRecordId: touchRecordId })
+    } else if (deltaX > 0 && swipedRecordId === touchRecordId) {
+      this.setData({ swipedRecordId: '' })
     }
   },
 
-  onRecordLongPress(e) {
-    const { id } = e.currentTarget.dataset
-    this.setData({ pressedRecordId: id })
-    this.deleteRecord(e)
+  onRecordTouchEnd() {
+    this.setData({
+      touchStartX: 0,
+      touchStartY: 0,
+      touchRecordId: ''
+    })
+  },
+
+  closeSwipedRecord() {
+    if (this.data.swipedRecordId) {
+      this.setData({ swipedRecordId: '' })
+    }
   },
 
   onSearchInput(e) {

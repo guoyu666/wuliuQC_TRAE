@@ -317,27 +317,47 @@
   margin-top: 12rpx;
 }
 
-.record-item {
+.record-swipe {
+  position: relative;
+  overflow: hidden;
+  border-radius: 20rpx;
+  margin-bottom: 10rpx;
+}
+
+.record-delete-action {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 168rpx;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: center;
+  color: #FFFFFF;
+  background: linear-gradient(135deg, #E53935 0%, #B91C1C 100%);
+}
+
+.delete-icon {
+  font-size: 26rpx;
+  font-weight: 700;
+  letter-spacing: 2rpx;
+}
+
+.record-item {
+  position: relative;
+  z-index: 1;
   background-color: var(--bg-card);
   border-radius: 20rpx;
   padding: 18rpx;
-  margin-bottom: 10rpx;
   box-shadow: var(--shadow-control);
   border: 1rpx solid rgba(217, 226, 236, 0.8);
-  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
-.record-item.is-pressed {
-  transform: scale(0.985);
+.record-swipe.is-open .record-item {
+  transform: translateX(-168rpx);
   border-color: rgba(211, 47, 47, 0.35);
   box-shadow: 0 10rpx 22rpx rgba(211, 47, 47, 0.14);
-  background-color: rgba(253, 236, 236, 0.88);
-}
-
-.record-content {
-  flex: 1;
 }
 
 .record-header {
@@ -430,7 +450,7 @@
   color: var(--text-muted);
 }
 
-.record-item.is-pressed .record-hint {
+.record-swipe.is-open .record-hint {
   color: #B91C1C;
   font-weight: 600;
 }
