@@ -161,6 +161,97 @@
   margin-right: 8rpx;
 }
 
+.sync-card {
+  background-color: var(--bg-card);
+  border: 1rpx solid var(--border-color);
+  border-radius: 20rpx;
+  padding: 20rpx;
+  margin-bottom: 20rpx;
+  box-shadow: var(--shadow-control);
+}
+
+.sync-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16rpx;
+  margin-bottom: 16rpx;
+}
+
+.sync-title {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 6rpx;
+}
+
+.sync-desc {
+  font-size: 24rpx;
+  color: var(--text-secondary);
+}
+
+.sync-action {
+  flex-shrink: 0;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #FFFFFF;
+  background: linear-gradient(135deg, #1976D2 0%, #125DB1 100%);
+  padding: 12rpx 18rpx;
+  border-radius: 999rpx;
+}
+
+.sync-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+}
+
+.sync-chip {
+  font-size: 22rpx;
+  font-weight: 600;
+  padding: 8rpx 14rpx;
+  border-radius: 999rpx;
+}
+
+.sync-chip.synced {
+  color: #2E7D32;
+  background-color: var(--success-bg);
+}
+
+.sync-chip.pending {
+  color: var(--blue-color);
+  background-color: var(--blue-bg);
+}
+
+.sync-chip.delete {
+  color: var(--red-color);
+  background-color: var(--red-bg);
+}
+
+.sync-chip.restore {
+  color: #B45309;
+  background-color: var(--warning-bg);
+}
+
+.sync-error {
+  margin-top: 14rpx;
+  font-size: 22rpx;
+  color: var(--red-color);
+  line-height: 1.45;
+}
+
+.sync-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14rpx;
+}
+
+.sync-cancel {
+  font-size: 24rpx;
+  color: var(--text-secondary);
+  padding: 10rpx 0;
+}
+
 .record-group {
   margin-bottom: 32rpx;
 }

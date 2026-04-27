@@ -6,6 +6,39 @@ const CLOUD_FUNCTION_NAME = 'syncRecords'
 const CLOUD_CACHE_KEY = 'lastCloudFetchAt'
 const CLOUD_REPLACE_KEY = 'pendingCloudReplace'
 const CLOUD_FETCH_INTERVAL = 60 * 1000
+const STORAGE_SCHEMA_KEY = 'storageSchemaVersion'
+const STORAGE_SCHEMA_VERSION = 2
+const CLOUD_PROTOCOL_VERSION = 2
+
+function showStorageError(err) {
+  console.error('本地存储写入失败', err)
+  if (typeof wx !== 'undefined' && wx.showToast) {
+    wx.showToast({
+      title: '本地存储空间不足或写入失败',
+      icon: 'none'
+    })
+  }
+}
+
+function safeGetStorageSync(key, fallback) {
+  try {
+    const value = wx.getStorageSync(key)
+    return value === '' || value === undefined ? fallback : value
+  } catch (err) {
+    console.error(`读取本地存储失败: ${key}`, err)
+    return fallback
+  }
+}
+
+function safeSetStorageSync(key, value) {
+  try {
+    wx.setStorageSync(key, value)
+    return true
+  } catch (err) {
+    showStorageError(err)
+    return false
+  }
+}
 
 function parseRecordTime(value) {
   if (!value) return 0
@@ -45,27 +78,87 @@ function getVisibleRecords(records) {
 }
 
 function getStoredRecords() {
-  return wx.getStorageSync('records') || []
+  return safeGetStorageSync('records', [])
 }
 
 function saveStoredRecords(records) {
-  wx.setStorageSync('records', records)
+  return safeSetStorageSync('records', records)
 }
 
 function getLastCloudFetchAt() {
-  return wx.getStorageSync(CLOUD_CACHE_KEY) || 0
+  return safeGetStorageSync(CLOUD_CACHE_KEY, 0)
 }
 
 function setLastCloudFetchAt(timestamp) {
-  wx.setStorageSync(CLOUD_CACHE_KEY, timestamp)
+  safeSetStorageSync(CLOUD_CACHE_KEY, timestamp)
 }
 
 function hasPendingCloudReplace() {
-  return !!wx.getStorageSync(CLOUD_REPLACE_KEY)
+  const pending = safeGetStorageSync(CLOUD_REPLACE_KEY, null)
+  return !!(pending && pending.pending)
 }
 
-function setPendingCloudReplace(pending) {
-  wx.setStorageSync(CLOUD_REPLACE_KEY, pending)
+function getPendingCloudReplaceMeta() {
+  const pending = safeGetStorageSync(CLOUD_REPLACE_KEY, null)
+  if (!pending || !pending.pending) {
+    return null
+  }
+  return pending
+}
+
+function setPendingCloudReplace(pending, meta = {}) {
+  if (!pending) {
+    safeSetStorageSync(CLOUD_REPLACE_KEY, null)
+    return
+  }
+
+  const previous = getPendingCloudReplaceMeta() || {}
+  safeSetStorageSync(CLOUD_REPLACE_KEY, {
+    pending: true,
+    startedAt: previous.startedAt || Date.now(),
+    failedCount: previous.failedCount || 0,
+    lastError: '',
+    ...meta
+  })
+}
+
+function markPendingCloudReplaceFailed(error) {
+  const pending = getPendingCloudReplaceMeta()
+  if (!pending) return
+
+  setPendingCloudReplace(true, {
+    ...pending,
+    failedCount: (pending.failedCount || 0) + 1,
+    lastError: error || '同步失败',
+    lastFailedAt: Date.now()
+  })
+}
+
+function cancelPendingCloudReplace() {
+  setPendingCloudReplace(false)
+}
+
+async function callSyncFunction(data = {}) {
+  const res = await wx.cloud.callFunction({
+    name: CLOUD_FUNCTION_NAME,
+    data: {
+      protocolVersion: CLOUD_PROTOCOL_VERSION,
+      ...data
+    }
+  })
+
+  const result = res.result || {}
+  if (!result.protocolVersion) {
+    throw new Error('云函数版本过旧，请先部署最新 syncRecords 云函数')
+  }
+  if (result.protocolVersion && result.protocolVersion < CLOUD_PROTOCOL_VERSION) {
+    throw new Error('云函数版本过旧，请先部署最新 syncRecords 云函数')
+  }
+  if (result.code === 'PROTOCOL_MISMATCH') {
+    throw new Error(result.message || '客户端与云函数同步协议不一致')
+  }
+
+  return result
 }
 
 function formatRecordTime(value) {
@@ -181,47 +274,94 @@ function buildCloudUpdateData(source, includeCreateTime = false) {
 
 function setOpenid(id) {
   openid = id
-  wx.setStorageSync('openid', id)
+  safeSetStorageSync('openid', id)
 }
 
 function getOpenid() {
   if (!openid) {
-    openid = wx.getStorageSync('openid')
+    openid = safeGetStorageSync('openid', '')
   }
   return openid
 }
 
 function isLoggedIn() {
-  return !!openid && isCloudEnabled
+  return !!getOpenid() && isCloudEnabled
 }
 
 function setCloudEnabled(enabled) {
   isCloudEnabled = enabled
-  wx.setStorageSync('cloudEnabled', enabled)
+  safeSetStorageSync('cloudEnabled', enabled)
 }
 
 function getCloudEnabled() {
-  const stored = wx.getStorageSync('cloudEnabled')
+  const stored = safeGetStorageSync('cloudEnabled', false)
   if (!stored) {
     return false
   }
 
   isCloudEnabled = true
+  getOpenid()
   return true
+}
+
+function normalizeNameList(list) {
+  if (!Array.isArray(list)) return []
+  return Array.from(new Set(list.map(item => String(item || '').trim()).filter(Boolean)))
+}
+
+function migrateStorageIfNeeded() {
+  const currentVersion = safeGetStorageSync(STORAGE_SCHEMA_KEY, 0)
+  if (currentVersion >= STORAGE_SCHEMA_VERSION) {
+    return { success: true, migrated: false, version: currentVersion }
+  }
+
+  const rawRecords = safeGetStorageSync('records', [])
+  const migratedRecords = Array.isArray(rawRecords)
+    ? sortRecords(rawRecords.map((record, index) => normalizeRecord({
+      ...record,
+      id: record && (record.id || record._id) || `migrated-${Date.now()}-${index}`,
+      synced: typeof (record && record.synced) === 'boolean' ? record.synced : false
+    }, false)).filter(Boolean))
+    : []
+  const migratedRoutes = normalizeNameList(safeGetStorageSync('routes', []))
+  const migratedPlates = normalizeNameList(safeGetStorageSync('plates', []))
+
+  const ok = saveStoredRecords(migratedRecords) &&
+    safeSetStorageSync('routes', migratedRoutes) &&
+    safeSetStorageSync('plates', migratedPlates) &&
+    safeSetStorageSync(STORAGE_SCHEMA_KEY, STORAGE_SCHEMA_VERSION)
+
+  return {
+    success: ok,
+    migrated: ok,
+    version: STORAGE_SCHEMA_VERSION,
+    recordCount: migratedRecords.length
+  }
 }
 
 async function initCloud() {
   try {
-    const result = await wx.cloud.callFunction({
-      name: 'login'
-    })
+    const result = await wx.cloud.callFunction({ name: 'login' })
 
     if (result.result && result.result.success) {
       openid = result.result.openid
       isCloudEnabled = true
-      wx.setStorageSync('openid', openid)
-      wx.setStorageSync('cloudEnabled', true)
+      safeSetStorageSync('openid', openid)
+      safeSetStorageSync('cloudEnabled', true)
       console.log('云登录成功', openid)
+
+      try {
+        await callSyncFunction({ action: 'protocol' })
+      } catch (err) {
+        console.error('云函数协议检查失败', err)
+        isCloudEnabled = false
+        safeSetStorageSync('cloudEnabled', false)
+        return {
+          success: false,
+          message: err.message
+        }
+      }
+
       return {
         success: true,
         openid: openid,
@@ -254,19 +394,21 @@ async function addRecord(record) {
   }
 
   localRecords.push(newRecord)
-  saveStoredRecords(localRecords)
+  if (!saveStoredRecords(localRecords)) {
+    return { success: false, message: '本地存储失败' }
+  }
 
   if (isCloudEnabled && openid) {
     try {
-      const db = wx.cloud.database()
-      await db.collection('records').add({
-        data: {
-          _openid: openid,
-          ...buildCloudUpdateData(newRecord, true)
-        }
+      const result = await callSyncFunction({
+        action: 'upsert',
+        record: newRecord
       })
 
       newRecord.synced = true
+      if (result.record && result.record._id) {
+        newRecord._id = result.record._id
+      }
       const index = localRecords.findIndex(r => r.id === newRecord.id)
       if (index !== -1) {
         localRecords[index] = newRecord
@@ -303,15 +445,10 @@ async function getAllRecords(options = {}) {
 
   if (isCloudEnabled && openid && (forceRefresh || !shouldUseLocalFirst || shouldRefreshCloud)) {
     try {
-      const res = await wx.cloud.callFunction({
-        name: CLOUD_FUNCTION_NAME,
-        data: {
-          action: 'download'
-        }
-      })
+      const result = await callSyncFunction({ action: 'download' })
 
-      if (res.result && res.result.success) {
-        const cloudRecords = (res.result.records || []).map(record => normalizeRecord({
+      if (result.success) {
+        const cloudRecords = (result.records || []).map(record => normalizeRecord({
           ...record,
           id: record.id || record._id,
           synced: true
@@ -343,21 +480,13 @@ async function deleteRecord(id) {
     }
     return r
   })
-  saveStoredRecords(newRecords)
+  if (!saveStoredRecords(newRecords)) {
+    return { success: false, message: '本地存储失败' }
+  }
 
   if (isCloudEnabled && openid) {
     try {
-      const db = wx.cloud.database()
-      const cloudRecords = await db.collection('records')
-        .where({
-          _openid: openid,
-          id: id
-        })
-        .get()
-
-      if (cloudRecords.data && cloudRecords.data.length > 0) {
-        await db.collection('records').doc(cloudRecords.data[0]._id).remove()
-      }
+      await callSyncFunction({ action: 'delete', id })
       newRecords = getStoredRecords().filter(r => r.id !== id)
       saveStoredRecords(newRecords)
     } catch (err) {
@@ -379,46 +508,25 @@ async function updateRecord(id, updates) {
     }
     return r
   })
-  saveStoredRecords(newRecords)
+  if (!saveStoredRecords(newRecords)) {
+    return { success: false, message: '本地存储失败' }
+  }
 
   if (isCloudEnabled && openid) {
     try {
-      const db = wx.cloud.database()
-      const cloudRecords = await db.collection('records')
-        .where({
-          _openid: openid,
-          id: id
-        })
-        .get()
-
       const updatedRecord = newRecords.find(r => r.id === id)
-      const cloudData = buildCloudUpdateData(updatedRecord || updates)
-
-      if (cloudRecords.data && cloudRecords.data.length > 0) {
-        await db.collection('records').doc(cloudRecords.data[0]._id).update({
-          data: cloudData
+      if (updatedRecord) {
+        const result = await callSyncFunction({
+          action: 'upsert',
+          record: updatedRecord
         })
-
         const index = newRecords.findIndex(r => r.id === id)
         if (index !== -1) {
           newRecords[index].synced = true
-          saveStoredRecords(newRecords)
-        }
-      } else {
-        const recordToCreate = newRecords.find(r => r.id === id)
-        if (recordToCreate) {
-          await db.collection('records').add({
-            data: {
-              _openid: openid,
-              ...buildCloudUpdateData(recordToCreate, true)
-            }
-          })
-
-          const index = newRecords.findIndex(r => r.id === id)
-          if (index !== -1) {
-            newRecords[index].synced = true
-            saveStoredRecords(newRecords)
+          if (result.record && result.record._id) {
+            newRecords[index]._id = result.record._id
           }
+          saveStoredRecords(newRecords)
         }
       }
     } catch (err) {
@@ -445,39 +553,45 @@ async function syncRecords() {
 
   try {
     const pendingCloudReplace = hasPendingCloudReplace()
-    const result = await wx.cloud.callFunction({
-      name: 'syncRecords',
-      data: {
-        action: pendingCloudReplace ? 'replace' : 'merge',
-        localRecords: pendingCloudReplace ? getVisibleRecords(getStoredRecords()) : getStoredRecords()
-      }
+    const result = await callSyncFunction({
+      action: pendingCloudReplace ? 'replace' : 'merge',
+      localRecords: pendingCloudReplace ? getVisibleRecords(getStoredRecords()) : getStoredRecords()
     })
 
-    if (result.result && result.result.success) {
-      const mergedRecords = sortRecords((result.result.mergedRecords || []).map(record => normalizeRecord(record, true)))
+    if (result.success) {
+      const mergedRecords = sortRecords((result.mergedRecords || []).map(record => normalizeRecord(record, true)))
 
       saveStoredRecords(mergedRecords)
-      if (!pendingCloudReplace || !result.result.failedCount) {
+      if (!pendingCloudReplace || !result.failedCount) {
         setPendingCloudReplace(false)
+      } else {
+        markPendingCloudReplaceFailed('部分记录上传失败')
       }
       setLastCloudFetchAt(Date.now())
 
       return {
         success: true,
         synced: mergedRecords.length,
-        cloudCount: result.result.cloudCount,
-        localCount: result.result.localCount,
-        mergedCount: result.result.mergedCount
+        cloudCount: result.cloudCount,
+        localCount: result.localCount,
+        mergedCount: result.mergedCount
       }
+    }
+
+    if (pendingCloudReplace) {
+      markPendingCloudReplaceFailed(result.message || '恢复同步失败')
     }
 
     return {
       success: false,
-      message: '同步失败',
+      message: result.message || '同步失败',
       synced: 0
     }
   } catch (err) {
     console.error('同步失败', err)
+    if (hasPendingCloudReplace()) {
+      markPendingCloudReplaceFailed(err.message)
+    }
     return {
       success: false,
       message: err.message,
@@ -491,66 +605,71 @@ function getSyncStatus() {
   const visibleRecords = getVisibleRecords(records)
   const pendingDeletes = records.length - visibleRecords.length
   const syncedCount = visibleRecords.filter(r => r.synced).length
+  const pendingReplace = getPendingCloudReplaceMeta()
   return {
     total: visibleRecords.length,
     visibleTotal: visibleRecords.length,
     pendingDeletes,
     synced: syncedCount,
     unsynced: visibleRecords.length - syncedCount,
+    pendingCloudReplace: !!pendingReplace,
+    pendingCloudReplaceAt: pendingReplace && pendingReplace.startedAt,
+    pendingCloudReplaceFailedCount: pendingReplace ? pendingReplace.failedCount || 0 : 0,
+    pendingCloudReplaceLastError: pendingReplace && pendingReplace.lastError || '',
     isLoggedIn: isCloudEnabled
   }
 }
 
 function getRoutes() {
-  return wx.getStorageSync('routes') || []
+  return safeGetStorageSync('routes', [])
 }
 
 function addRoute(routeName) {
   if (!routeName || !routeName.trim()) return []
-  const routes = wx.getStorageSync('routes') || []
+  const routes = safeGetStorageSync('routes', [])
   const trimmed = routeName.trim()
   if (!routes.includes(trimmed)) {
     routes.push(trimmed)
-    wx.setStorageSync('routes', routes)
+    safeSetStorageSync('routes', routes)
   }
   return routes
 }
 
 function getPlates() {
-  return wx.getStorageSync('plates') || []
+  return safeGetStorageSync('plates', [])
 }
 
 function addPlate(plateNumber) {
   if (!plateNumber || !plateNumber.trim()) return []
-  const plates = wx.getStorageSync('plates') || []
+  const plates = safeGetStorageSync('plates', [])
   const trimmed = plateNumber.trim()
   if (!plates.includes(trimmed)) {
     plates.push(trimmed)
-    wx.setStorageSync('plates', plates)
+    safeSetStorageSync('plates', plates)
   }
   return plates
 }
 
 function deleteRoute(routeName) {
   if (!routeName) return []
-  const routes = wx.getStorageSync('routes') || []
+  const routes = safeGetStorageSync('routes', [])
   const filtered = routes.filter(r => r !== routeName)
-  wx.setStorageSync('routes', filtered)
+  safeSetStorageSync('routes', filtered)
   return filtered
 }
 
 function deletePlate(plateNumber) {
   if (!plateNumber) return []
-  const plates = wx.getStorageSync('plates') || []
+  const plates = safeGetStorageSync('plates', [])
   const filtered = plates.filter(p => p !== plateNumber)
-  wx.setStorageSync('plates', filtered)
+  safeSetStorageSync('plates', filtered)
   return filtered
 }
 
 function exportAllData() {
   const records = getStoredRecords()
-  const routes = wx.getStorageSync('routes') || []
-  const plates = wx.getStorageSync('plates') || []
+  const routes = safeGetStorageSync('routes', [])
+  const plates = safeGetStorageSync('plates', [])
   const backupData = {
     version: '1.0',
     timestamp: new Date().toISOString(),
@@ -574,10 +693,13 @@ function importAllData(jsonStr) {
       updatedAt: importedAt,
       synced: false
     }, false))
-    wx.setStorageSync('records', sortRecords(importedRecords))
-    wx.setStorageSync('routes', data.routes || [])
-    wx.setStorageSync('plates', data.plates || [])
-    setPendingCloudReplace(true)
+    const ok = saveStoredRecords(sortRecords(importedRecords)) &&
+      safeSetStorageSync('routes', normalizeNameList(data.routes || [])) &&
+      safeSetStorageSync('plates', normalizeNameList(data.plates || []))
+    if (!ok) {
+      return { success: false, message: '本地存储失败，请清理空间后重试' }
+    }
+    setPendingCloudReplace(true, { startedAt: importedAt, failedCount: 0 })
     setLastCloudFetchAt(Date.now())
     return { success: true, message: '恢复成功' }
   } catch (e) {
@@ -657,6 +779,7 @@ function exportRecordsToExcel(records) {
 
 module.exports = {
   initCloud,
+  migrateStorageIfNeeded,
   setOpenid,
   getOpenid,
   isLoggedIn,
@@ -670,6 +793,7 @@ module.exports = {
   getRecordById,
   syncRecords,
   getSyncStatus,
+  cancelPendingCloudReplace,
   getRoutes,
   addRoute,
   getPlates,

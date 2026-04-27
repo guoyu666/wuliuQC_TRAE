@@ -1,6 +1,24 @@
 const cloud = require('wx-server-sdk')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const PAGE_SIZE = 100
+const CLOUD_PROTOCOL_VERSION = 2
+
+function success(payload = {}) {
+  return {
+    success: true,
+    protocolVersion: CLOUD_PROTOCOL_VERSION,
+    ...payload
+  }
+}
+
+function failure(message, payload = {}) {
+  return {
+    success: false,
+    protocolVersion: CLOUD_PROTOCOL_VERSION,
+    message,
+    ...payload
+  }
+}
 
 function normalizeTime(value) {
   if (!value) return 0
@@ -106,9 +124,87 @@ exports.main = async (event, context) => {
   const db = cloud.database()
   const records = db.collection('records')
 
-  const { action, localRecords } = event
+  const { action, localRecords, record, id, protocolVersion } = event
 
   try {
+    if (action === 'protocol') {
+      return success({
+        minClientProtocolVersion: CLOUD_PROTOCOL_VERSION
+      })
+    }
+
+    if (protocolVersion !== CLOUD_PROTOCOL_VERSION) {
+      return failure('客户端与云函数同步协议不一致，请部署最新版本', {
+        code: 'PROTOCOL_MISMATCH',
+        expectedProtocolVersion: CLOUD_PROTOCOL_VERSION,
+        receivedProtocolVersion: protocolVersion || 0
+      })
+    }
+
+    if (action === 'upsert') {
+      if (!record || !record.id) {
+        return failure('无效的记录数据')
+      }
+
+      const existing = await records
+        .where({
+          _openid: wxContext.OPENID,
+          id: record.id
+        })
+        .get()
+
+      if (existing.data && existing.data.length > 0) {
+        const target = existing.data[0]
+        await records.doc(target._id).update({
+          data: buildRecordData(record)
+        })
+        return success({
+          record: {
+            ...target,
+            ...record,
+            _id: target._id,
+            synced: true
+          }
+        })
+      }
+
+      const createRes = await records.add({
+        data: {
+          _openid: wxContext.OPENID,
+          ...buildRecordData(record, true)
+        }
+      })
+
+      return success({
+        record: {
+          ...record,
+          _id: createRes._id,
+          synced: true
+        }
+      })
+    }
+
+    if (action === 'delete') {
+      if (!id) {
+        return failure('无效的记录ID')
+      }
+
+      const existing = await records
+        .where({
+          _openid: wxContext.OPENID,
+          id
+        })
+        .get()
+
+      let deleted = 0
+      for (const item of existing.data || []) {
+        await records.doc(item._id).remove()
+        deleted++
+      }
+
+      return success({ deleted })
+    }
+
     if (action === 'upload') {
       let synced = 0
       let failed = 0
@@ -128,30 +224,25 @@ exports.main = async (event, context) => {
         }
       }
 
-      return {
-        success: true,
+      return success({
         synced,
         failed,
         total: localRecords.length
-      }
+      })
     }
 
     if (action === 'download') {
       const data = sortRecords(await fetchAllRecords(records, wxContext.OPENID))
 
-      return {
-        success: true,
+      return success({
         records: data,
         count: data.length
-      }
+      })
     }
 
     if (action === 'replace') {
       if (!localRecords || !Array.isArray(localRecords)) {
-        return {
-          success: false,
-          message: '无效的本地数据'
-        }
+        return failure('无效的本地数据')
       }
 
       const restoreBatchId = `restore_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
@@ -206,15 +297,13 @@ exports.main = async (event, context) => {
           }
         }
 
-        return {
-          success: false,
-          message: '恢复数据上传不完整，已保留原云端数据',
+        return failure('恢复数据上传不完整，已保留原云端数据', {
           mergedRecords,
           cloudCount: visibleCloudRecords.length,
           localCount: localRecords.length,
           mergedCount: mergedRecords.length,
           failedCount: failed
-        }
+        })
       }
 
       for (const record of visibleCloudRecords) {
@@ -231,22 +320,18 @@ exports.main = async (event, context) => {
 
       const merged = sortRecords(mergedRecords)
 
-      return {
-        success: true,
+      return success({
         mergedRecords: merged,
         cloudCount: visibleCloudRecords.length,
         localCount: localRecords.length,
         mergedCount: merged.length,
         failedCount: failed
-      }
+      })
     }
 
     if (action === 'merge') {
       if (!localRecords || !Array.isArray(localRecords)) {
-        return {
-          success: false,
-          message: '无效的本地数据'
-        }
+        return failure('无效的本地数据')
       }
 
       const cloudRecords = await fetchAllRecords(records, wxContext.OPENID)
@@ -362,15 +447,14 @@ exports.main = async (event, context) => {
 
       const merged = sortRecords(Array.from(mergedMap.values()))
 
-      return {
-        success: true,
+      return success({
         mergedRecords: merged,
         cloudCount: cloudRecords.length,
         localCount: localRecords.length,
         mergedCount: merged.length,
         failedCount: failedSyncIds.length,
         failedSyncIds
-      }
+      })
     }
 
     if (action === 'clear') {
@@ -384,20 +468,13 @@ exports.main = async (event, context) => {
         }
       }
 
-      return {
-        success: true,
+      return success({
         deleted: cloudRecords.length
-      }
+      })
     }
 
-    return {
-      success: false,
-      message: '未知操作'
-    }
+    return failure('未知操作')
   } catch (err) {
-    return {
-      success: false,
-      error: err.message
-    }
+    return failure(err.message, { error: err.message })
   }
 }

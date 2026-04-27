@@ -533,10 +533,20 @@ Page({
       remark: remark.trim()
     }
 
-    db.addRecord(newRecord).then(() => {
+    db.addRecord(newRecord).then((result) => {
+      if (!result.success) {
+        wx.showToast({
+          title: result.message || '记录失败',
+          icon: 'none'
+        })
+        return
+      }
+
       this.setData({
         routeName: '',
         plateNumber: '',
+        sendBlueOut: 0,
+        sendRedOut: 0,
         blueOut: 0,
         blueIn: 0,
         redOut: 0,

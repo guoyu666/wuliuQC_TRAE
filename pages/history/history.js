@@ -48,6 +48,7 @@ Page({
     filterEndDate: '',
     showBackupModal: false,
     pressedRecordId: '',
+    syncStatus: null,
     isDarkTheme: false
   },
 
@@ -55,13 +56,17 @@ Page({
     this.setData({
       routeList: db.getRoutes(),
       plateList: db.getPlates(),
-      isDarkTheme: theme.isDark
+      isDarkTheme: theme.isDark,
+      syncStatus: db.getSyncStatus()
     })
     this.loadRecords()
   },
 
   onShow() {
-    this.setData({ isDarkTheme: theme.isDark })
+    this.setData({
+      isDarkTheme: theme.isDark,
+      syncStatus: db.getSyncStatus()
+    })
     this.loadRecords()
   },
 
@@ -89,8 +94,52 @@ Page({
         currentPage: 1,
         hasMore: hasMore,
         displayGroupedRecords: displayGroupedRecords,
-        totalCount: grouped.length
+        totalCount: grouped.length,
+        syncStatus: db.getSyncStatus()
       })
+    })
+  },
+
+  refreshSyncStatus() {
+    this.setData({ syncStatus: db.getSyncStatus() })
+  },
+
+  retrySync() {
+    if (!db.isLoggedIn()) {
+      wx.showToast({ title: '云端未登录，稍后再试', icon: 'none' })
+      return
+    }
+
+    wx.showLoading({ title: '同步中...' })
+    db.syncRecords()
+      .then(result => {
+        if (result.success) {
+          feedback.success()
+          wx.showToast({ title: '同步完成', icon: 'success' })
+        } else {
+          wx.showToast({ title: result.message || '同步失败', icon: 'none' })
+        }
+      })
+      .finally(() => {
+        wx.hideLoading()
+        this.loadRecords(true).finally(() => {
+          this.refreshSyncStatus()
+        })
+      })
+  },
+
+  cancelPendingRestore() {
+    wx.showModal({
+      title: '取消恢复同步',
+      content: '取消后将不再把当前备份覆盖到云端，之后会重新拉取云端数据。确定取消吗？',
+      success: (res) => {
+        if (res.confirm) {
+          db.cancelPendingCloudReplace()
+          this.loadRecords(true).finally(() => {
+            this.refreshSyncStatus()
+          })
+        }
+      }
     })
   },
 
@@ -307,7 +356,12 @@ Page({
       redOut: editRedOut,
       redIn: editRedIn,
       remark: editRemark.trim()
-    }).then(() => {
+    }).then((result) => {
+      if (!result.success) {
+        wx.showToast({ title: result.message || '保存失败', icon: 'none' })
+        return
+      }
+
       this.hideDataModal()
       this.loadRecords()
       feedback.success()
@@ -574,7 +628,12 @@ Page({
       content: '长按已触发删除，确定要删除这条记录吗？',
       success: (res) => {
         if (res.confirm) {
-          db.deleteRecord(id).then(() => {
+          db.deleteRecord(id).then((result) => {
+            if (!result.success) {
+              wx.showToast({ title: result.message || '删除失败', icon: 'none' })
+              return
+            }
+
             this.loadRecords()
             feedback.delete()
             wx.showToast({
