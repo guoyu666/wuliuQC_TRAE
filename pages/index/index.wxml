@@ -149,7 +149,7 @@
       <view class="input-group flex-1">
         <view class="input-label">线路名称</view>
         <view class="picker-row">
-          <picker mode="selector" range="{{routeList}}" value="{{routeIndex}}" bindchange="onRouteChange">
+          <picker class="picker-main" mode="selector" range="{{routeList}}" value="{{routeIndex}}" bindchange="onRouteChange">
             <view class="picker-btn {{routeIndex >= 0 ? 'has-value' : ''}}">
               {{routeIndex >= 0 ? routeList[routeIndex] : '选择线路'}}
             </view>
@@ -160,9 +160,9 @@
       </view>
       <view class="input-group flex-1">
         <view class="input-label">车牌号</view>
-        <view class="picker-row">
-          <picker mode="selector" range="{{plateList}}" value="{{plateIndex}}" bindchange="onPlateChange">
-            <view class="picker-btn {{plateIndex >= 0 ? 'has-value' : ''}}">
+        <view class="picker-row plate-picker-row">
+          <picker class="picker-main plate-picker-main" mode="selector" range="{{plateList}}" value="{{plateIndex}}" bindchange="onPlateChange">
+            <view class="picker-btn plate-picker-btn {{plateIndex >= 0 ? 'has-value' : ''}}">
               {{plateIndex >= 0 ? plateList[plateIndex] : '选择车牌'}}
             </view>
           </picker>

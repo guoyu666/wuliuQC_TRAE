@@ -627,10 +627,16 @@
 .picker-row {
   display: flex;
   gap: 12rpx;
+  align-items: center;
+  min-width: 0;
+}
+
+.picker-main {
+  flex: 1;
+  min-width: 0;
 }
 
 .picker-btn {
-  flex: 1;
   height: 72rpx;
   line-height: 72rpx;
   padding: 0 16rpx;
@@ -645,7 +651,25 @@
   color: var(--text-primary);
 }
 
+.plate-picker-row {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.plate-picker-main {
+  flex: 1 0 auto;
+  min-width: 0;
+}
+
+.plate-picker-btn {
+  display: inline-block;
+  min-width: 100%;
+  white-space: nowrap;
+}
+
 .inline-input {
+  flex-shrink: 0;
   width: 100rpx;
   height: 72rpx;
   padding: 0 12rpx;
@@ -656,6 +680,7 @@
 }
 
 .delete-btn {
+  flex-shrink: 0;
   width: 48rpx;
   height: 72rpx;
   line-height: 72rpx;
