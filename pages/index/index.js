@@ -58,6 +58,18 @@ Page({
   },
 
   onShow() {
+    this.refreshPickerOptions()
+    db.refreshDictionariesFromCloud().then(() => {
+      this.refreshPickerOptions()
+    })
+    this.loadData()
+  },
+
+  onUnload() {
+    this.clearDateSwitchTimer()
+  },
+
+  refreshPickerOptions() {
     const routeList = db.getRoutes()
     const plateList = db.getPlates()
     const routeIndex = routeList.indexOf(this.data.routeName)
@@ -70,7 +82,45 @@ Page({
       routeIndex,
       plateIndex
     })
-    this.loadData()
+  },
+
+  clearDateSwitchTimer() {
+    if (this.dateSwitchTimer) {
+      clearTimeout(this.dateSwitchTimer)
+      this.dateSwitchTimer = null
+    }
+  },
+
+  getResetEntryFields() {
+    return {
+      routeName: '',
+      plateNumber: '',
+      blueOut: 0,
+      blueIn: 0,
+      redOut: 0,
+      redIn: 0,
+      remark: '',
+      sendBlueOut: 0,
+      sendRedOut: 0
+    }
+  },
+
+  switchDateWithAnimation(getNextState, afterSet) {
+    this.clearDateSwitchTimer()
+    this.animateBars()
+    this.dateSwitchTimer = setTimeout(() => {
+      this.dateSwitchTimer = null
+      this.setData({
+        ...this.getResetEntryFields(),
+        ...getNextState()
+      }, () => {
+        if (afterSet) {
+          afterSet()
+        }
+        this.loadData()
+        this.animateBarsIn()
+      })
+    }, 400)
   },
 
   loadData() {
@@ -194,125 +244,58 @@ Page({
 
   onDateChange(e) {
     const selectedDate = e.detail.value
-    this.animateBars()
-    setTimeout(() => {
-      this.setData({
-        selectedDate,
-        routeName: '',
-        plateNumber: '',
-        blueOut: 0,
-        blueIn: 0,
-        redOut: 0,
-        redIn: 0,
-        remark: '',
-        sendBlueOut: 0,
-        sendRedOut: 0
-      }, () => {
-        this.updateQuickType()
-        this.loadData()
-        this.animateBarsIn()
-      })
-    }, 400)
+    this.switchDateWithAnimation(() => ({ selectedDate }), () => {
+      this.updateQuickType()
+    })
   },
 
   goToToday() {
-    this.animateBars()
-    setTimeout(() => {
-      this.setData({
-        selectedDate: this.data.today,
-        quickType: 'today',
-        routeName: '',
-        plateNumber: '',
-        blueOut: 0,
-        blueIn: 0,
-        redOut: 0,
-        redIn: 0,
-        remark: '',
-        sendBlueOut: 0,
-        sendRedOut: 0
-      }, () => {
-        this.loadData()
-        this.animateBarsIn()
-      })
-    }, 400)
+    this.switchDateWithAnimation(() => ({
+      selectedDate: this.data.today,
+      quickType: 'today'
+    }))
   },
 
   goToYesterday() {
-    this.animateBars()
-    setTimeout(() => {
-      const currentDate = new Date(this.data.selectedDate)
+    const baseDate = this.data.selectedDate
+    this.switchDateWithAnimation(() => {
+      const currentDate = new Date(baseDate)
       currentDate.setDate(currentDate.getDate() - 1)
       const yesterdayDate = util.formatDate(currentDate)
-      
-      this.setData({
+
+      return {
         selectedDate: yesterdayDate,
-        quickType: 'yesterday',
-        routeName: '',
-        plateNumber: '',
-        blueOut: 0,
-        blueIn: 0,
-        redOut: 0,
-        redIn: 0,
-        remark: '',
-        sendBlueOut: 0,
-        sendRedOut: 0
-      }, () => {
-        this.loadData()
-        this.animateBarsIn()
-      })
-    }, 400)
+        quickType: 'yesterday'
+      }
+    })
   },
 
   goToLastWeek() {
-    this.animateBars()
-    setTimeout(() => {
-      const currentDate = new Date(this.data.selectedDate)
+    const baseDate = this.data.selectedDate
+    this.switchDateWithAnimation(() => {
+      const currentDate = new Date(baseDate)
       currentDate.setDate(currentDate.getDate() - 7)
       const lastWeekDate = util.formatDate(currentDate)
-      
-      this.setData({
+
+      return {
         selectedDate: lastWeekDate,
-        quickType: 'lastWeek',
-        routeName: '',
-        plateNumber: '',
-        blueOut: 0,
-        blueIn: 0,
-        redOut: 0,
-        redIn: 0,
-        remark: '',
-        sendBlueOut: 0,
-        sendRedOut: 0
-      }, () => {
-        this.loadData()
-        this.animateBarsIn()
-      })
-    }, 400)
+        quickType: 'lastWeek'
+      }
+    })
   },
 
   goToMonthStart() {
-    this.animateBars()
-    setTimeout(() => {
-      const currentDate = new Date(this.data.selectedDate)
+    const baseDate = this.data.selectedDate
+    this.switchDateWithAnimation(() => {
+      const currentDate = new Date(baseDate)
       const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
       const monthStartDate = util.formatDate(monthStart)
-      
-      this.setData({
+
+      return {
         selectedDate: monthStartDate,
-        quickType: 'monthStart',
-        routeName: '',
-        plateNumber: '',
-        blueOut: 0,
-        blueIn: 0,
-        redOut: 0,
-        redIn: 0,
-        remark: '',
-        sendBlueOut: 0,
-        sendRedOut: 0
-      }, () => {
-        this.loadData()
-        this.animateBarsIn()
-      })
-    }, 400)
+        quickType: 'monthStart'
+      }
+    })
   },
 
   onRouteChange(e) {

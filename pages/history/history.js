@@ -7,6 +7,7 @@ Page({
   data: {
     records: [],
     groupedRecords: [],
+    pagingRecords: [],
     displayGroupedRecords: [],
     showExportModal: false,
     showDataModal: false,
@@ -80,24 +81,21 @@ Page({
   },
 
   onReachBottom() {
-    if (!this.data.isSearching) {
-      this.loadMore()
-    }
+    this.loadMore()
   },
 
   loadRecords(forceRefresh = false) {
     return db.getAllRecords({ forceRefresh }).then(sortedRecords => {
-      const grouped = this.groupByDate(sortedRecords)
-      const displayGroupedRecords = grouped.slice(0, this.data.pageSize)
-      const hasMore = grouped.length > this.data.pageSize
+      const { displayGroupedRecords, hasMore } = this.getPagedGroups(sortedRecords, 1)
 
       this.setData({
         records: sortedRecords,
-        groupedRecords: grouped,
+        pagingRecords: sortedRecords,
+        groupedRecords: displayGroupedRecords,
         currentPage: 1,
         hasMore: hasMore,
         displayGroupedRecords: displayGroupedRecords,
-        totalCount: grouped.length,
+        totalCount: sortedRecords.length,
         syncStatus: db.getSyncStatus()
       })
     })
@@ -147,37 +145,49 @@ Page({
   },
 
   loadMore() {
-    const { groupedRecords, currentPage, pageSize, hasMore } = this.data
+    const { pagingRecords, currentPage, hasMore } = this.data
 
     if (!hasMore) return
 
     const nextPage = currentPage + 1
-    const startIndex = (nextPage - 1) * pageSize
-    const endIndex = nextPage * pageSize
-    const newGroups = groupedRecords.slice(startIndex, endIndex)
+    const { displayGroupedRecords, hasMore: stillHasMore, loadedCount } = this.getPagedGroups(pagingRecords, nextPage)
+    const previousLoadedCount = Math.min(currentPage * this.data.pageSize, pagingRecords.length)
 
-    if (newGroups.length === 0) {
+    if (loadedCount <= previousLoadedCount) {
       this.setData({ hasMore: false })
       return
     }
 
-    const displayGroupedRecords = this.data.displayGroupedRecords.concat(newGroups)
-    const stillHasMore = groupedRecords.length > nextPage * pageSize
-
     this.setData({
       currentPage: nextPage,
       displayGroupedRecords: displayGroupedRecords,
+      groupedRecords: displayGroupedRecords,
       hasMore: stillHasMore
     })
   },
 
-  groupByDate(records) {
+  getPagedGroups(records, page) {
+    const pageSize = this.data.pageSize
+    const loadedRecords = records.slice(0, page * pageSize)
+    return {
+      displayGroupedRecords: this.groupByDate(loadedRecords, records),
+      hasMore: records.length > loadedRecords.length,
+      loadedCount: loadedRecords.length
+    }
+  },
+
+  isValidRecordDate(record) {
+    return record && typeof record.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(record.date)
+  },
+
+  groupByDate(records, summaryRecords = records) {
     const groups = {}
 
     records.forEach(record => {
-      if (!groups[record.date]) {
-        groups[record.date] = {
-          date: record.date,
+      const date = this.isValidRecordDate(record) ? record.date : '未知日期'
+      if (!groups[date]) {
+        groups[date] = {
+          date,
           blueOut: 0,
           blueIn: 0,
           redOut: 0,
@@ -185,15 +195,23 @@ Page({
           records: []
         }
       }
-      groups[record.date].blueOut += record.blueOut || 0
-      groups[record.date].blueIn += record.blueIn || 0
-      groups[record.date].redOut += record.redOut || 0
-      groups[record.date].redIn += record.redIn || 0
-      groups[record.date].records.push(record)
+      groups[date].records.push(record)
+    })
+
+    summaryRecords.forEach(record => {
+      const date = this.isValidRecordDate(record) ? record.date : '未知日期'
+      if (!groups[date]) return
+
+      groups[date].blueOut += record.blueOut || 0
+      groups[date].blueIn += record.blueIn || 0
+      groups[date].redOut += record.redOut || 0
+      groups[date].redIn += record.redIn || 0
     })
 
     return Object.values(groups).sort((a, b) => {
-      return new Date(b.date) - new Date(a.date)
+      if (a.date === '未知日期') return 1
+      if (b.date === '未知日期') return -1
+      return b.date.localeCompare(a.date)
     })
   },
 
@@ -586,7 +604,34 @@ Page({
       return
     }
 
-    const excelContent = db.exportRecordsToExcel(exportRecords)
+    if (exportRecords.length > 1000) {
+      wx.showModal({
+        title: '导出记录较多',
+        content: `本次将导出 ${exportRecords.length} 条记录，生成 Excel 可能需要一些时间。是否继续？`,
+        confirmText: '继续导出',
+        success: (res) => {
+          if (res.confirm) {
+            this.generateExcelFile(exportRecords)
+          }
+        }
+      })
+      return
+    }
+
+    this.generateExcelFile(exportRecords)
+  },
+
+  generateExcelFile(records) {
+    wx.showLoading({ title: '生成中...' })
+    let excelContent
+    try {
+      excelContent = db.exportRecordsToExcel(records)
+    } catch (err) {
+      wx.hideLoading()
+      wx.showToast({ title: '生成失败', icon: 'none' })
+      return
+    }
+
     const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
     const filename = `records_${timestamp}.xlsx`
 
@@ -597,6 +642,7 @@ Page({
       filePath: savedFilePath,
       data: excelContent,
       success: () => {
+        wx.hideLoading()
         feedback.success()
         wx.openDocument({
           filePath: savedFilePath,
@@ -614,6 +660,7 @@ Page({
         })
       },
       fail: () => {
+        wx.hideLoading()
         wx.showToast({ title: '导出失败', icon: 'none' })
       }
     })
@@ -762,14 +809,13 @@ Page({
       filtered = filtered.filter(r => r.date <= filterEndDate)
     }
     
-    const grouped = this.groupByDate(filtered)
-    const displayGroupedRecords = grouped.slice(0, this.data.pageSize)
-    const hasMore = grouped.length > this.data.pageSize
+    const { displayGroupedRecords, hasMore } = this.getPagedGroups(filtered, 1)
     
     this.setData({
-      isSearching: searchKeyword || filterStartDate || filterEndDate,
+      isSearching: !!(searchKeyword || filterStartDate || filterEndDate),
       filteredRecordCount: filtered.length,
-      groupedRecords: grouped,
+      pagingRecords: filtered,
+      groupedRecords: displayGroupedRecords,
       displayGroupedRecords: displayGroupedRecords,
       currentPage: 1,
       hasMore: hasMore

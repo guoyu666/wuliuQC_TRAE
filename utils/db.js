@@ -85,6 +85,10 @@ function saveStoredRecords(records) {
   return safeSetStorageSync('records', records)
 }
 
+function createRecordId() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
 function getLastCloudFetchAt() {
   return safeGetStorageSync(CLOUD_CACHE_KEY, 0)
 }
@@ -309,6 +313,54 @@ function normalizeNameList(list) {
   return Array.from(new Set(list.map(item => String(item || '').trim()).filter(Boolean)))
 }
 
+function saveRoutes(routes) {
+  return safeSetStorageSync('routes', normalizeNameList(routes))
+}
+
+function savePlates(plates) {
+  return safeSetStorageSync('plates', normalizeNameList(plates))
+}
+
+function syncDictionariesToCloud() {
+  if (!isCloudEnabled || !openid) {
+    return Promise.resolve({ success: false, message: '未登录云端' })
+  }
+
+  return callSyncFunction({
+    action: 'syncMeta',
+    mode: 'replace',
+    routes: getRoutes(),
+    plates: getPlates()
+  }).catch(err => {
+    console.error('线路车牌同步失败', err)
+    return { success: false, message: err.message }
+  })
+}
+
+async function refreshDictionariesFromCloud() {
+  if (!isCloudEnabled || !openid) {
+    return { success: false, message: '未登录云端' }
+  }
+
+  try {
+    const result = await callSyncFunction({
+      action: 'syncMeta',
+      mode: 'merge',
+      routes: getRoutes(),
+      plates: getPlates()
+    })
+
+    if (result.success) {
+      saveRoutes(result.routes || [])
+      savePlates(result.plates || [])
+    }
+    return result
+  } catch (err) {
+    console.error('线路车牌刷新失败', err)
+    return { success: false, message: err.message }
+  }
+}
+
 function migrateStorageIfNeeded() {
   const currentVersion = safeGetStorageSync(STORAGE_SCHEMA_KEY, 0)
   if (currentVersion >= STORAGE_SCHEMA_VERSION) {
@@ -327,8 +379,8 @@ function migrateStorageIfNeeded() {
   const migratedPlates = normalizeNameList(safeGetStorageSync('plates', []))
 
   const ok = saveStoredRecords(migratedRecords) &&
-    safeSetStorageSync('routes', migratedRoutes) &&
-    safeSetStorageSync('plates', migratedPlates) &&
+    saveRoutes(migratedRoutes) &&
+    savePlates(migratedPlates) &&
     safeSetStorageSync(STORAGE_SCHEMA_KEY, STORAGE_SCHEMA_VERSION)
 
   return {
@@ -352,6 +404,7 @@ async function initCloud() {
 
       try {
         await callSyncFunction({ action: 'protocol' })
+        await refreshDictionariesFromCloud()
       } catch (err) {
         console.error('云函数协议检查失败', err)
         isCloudEnabled = false
@@ -387,7 +440,7 @@ async function addRecord(record) {
   const localRecords = getStoredRecords()
   const newRecord = {
     ...record,
-    id: Date.now().toString(),
+    id: createRecordId(),
     createTime: util.formatTime(new Date()),
     updatedAt: Date.now(),
     synced: false
@@ -411,7 +464,11 @@ async function addRecord(record) {
       }
       const index = localRecords.findIndex(r => r.id === newRecord.id)
       if (index !== -1) {
-        localRecords[index] = newRecord
+        localRecords[index] = normalizeRecord({
+          ...newRecord,
+          ...result.record,
+          synced: true
+        }, true)
         saveStoredRecords(localRecords)
       }
 
@@ -454,7 +511,10 @@ async function getAllRecords(options = {}) {
           synced: true
         }, true))
         const mergedRecords = mergeRecords(localRecords, cloudRecords)
-        saveStoredRecords(mergedRecords)
+        if (!saveStoredRecords(mergedRecords)) {
+          return getVisibleRecords(sortRecords(localRecords))
+        }
+        refreshDictionariesFromCloud()
         setLastCloudFetchAt(Date.now())
         return getVisibleRecords(mergedRecords)
       }
@@ -486,8 +546,22 @@ async function deleteRecord(id) {
 
   if (isCloudEnabled && openid) {
     try {
-      await callSyncFunction({ action: 'delete', id })
-      newRecords = getStoredRecords().filter(r => r.id !== id)
+      const deletingRecord = newRecords.find(r => r.id === id)
+      const result = await callSyncFunction({
+        action: 'delete',
+        id,
+        record: deletingRecord
+      })
+      if (result.record && result.skipped) {
+        newRecords = getStoredRecords().map(r => {
+          if (r.id === id) {
+            return normalizeRecord(result.record, true)
+          }
+          return r
+        })
+      } else {
+        newRecords = getStoredRecords().filter(r => r.id !== id)
+      }
       saveStoredRecords(newRecords)
     } catch (err) {
       console.error('云端删除失败', err)
@@ -522,10 +596,11 @@ async function updateRecord(id, updates) {
         })
         const index = newRecords.findIndex(r => r.id === id)
         if (index !== -1) {
-          newRecords[index].synced = true
-          if (result.record && result.record._id) {
-            newRecords[index]._id = result.record._id
-          }
+          newRecords[index] = normalizeRecord({
+            ...newRecords[index],
+            ...(result.record || {}),
+            synced: true
+          }, true)
           saveStoredRecords(newRecords)
         }
       }
@@ -561,7 +636,13 @@ async function syncRecords() {
     if (result.success) {
       const mergedRecords = sortRecords((result.mergedRecords || []).map(record => normalizeRecord(record, true)))
 
-      saveStoredRecords(mergedRecords)
+      if (!saveStoredRecords(mergedRecords)) {
+        return {
+          success: false,
+          message: '本地存储失败，请清理空间后重试',
+          synced: 0
+        }
+      }
       if (!pendingCloudReplace || !result.failedCount) {
         setPendingCloudReplace(false)
       } else {
@@ -630,7 +711,8 @@ function addRoute(routeName) {
   const trimmed = routeName.trim()
   if (!routes.includes(trimmed)) {
     routes.push(trimmed)
-    safeSetStorageSync('routes', routes)
+    saveRoutes(routes)
+    syncDictionariesToCloud()
   }
   return routes
 }
@@ -645,7 +727,8 @@ function addPlate(plateNumber) {
   const trimmed = plateNumber.trim()
   if (!plates.includes(trimmed)) {
     plates.push(trimmed)
-    safeSetStorageSync('plates', plates)
+    savePlates(plates)
+    syncDictionariesToCloud()
   }
   return plates
 }
@@ -654,7 +737,8 @@ function deleteRoute(routeName) {
   if (!routeName) return []
   const routes = safeGetStorageSync('routes', [])
   const filtered = routes.filter(r => r !== routeName)
-  safeSetStorageSync('routes', filtered)
+  saveRoutes(filtered)
+  syncDictionariesToCloud()
   return filtered
 }
 
@@ -662,7 +746,8 @@ function deletePlate(plateNumber) {
   if (!plateNumber) return []
   const plates = safeGetStorageSync('plates', [])
   const filtered = plates.filter(p => p !== plateNumber)
-  safeSetStorageSync('plates', filtered)
+  savePlates(filtered)
+  syncDictionariesToCloud()
   return filtered
 }
 
@@ -694,12 +779,13 @@ function importAllData(jsonStr) {
       synced: false
     }, false))
     const ok = saveStoredRecords(sortRecords(importedRecords)) &&
-      safeSetStorageSync('routes', normalizeNameList(data.routes || [])) &&
-      safeSetStorageSync('plates', normalizeNameList(data.plates || []))
+      saveRoutes(data.routes || []) &&
+      savePlates(data.plates || [])
     if (!ok) {
       return { success: false, message: '本地存储失败，请清理空间后重试' }
     }
     setPendingCloudReplace(true, { startedAt: importedAt, failedCount: 0 })
+    syncDictionariesToCloud()
     setLastCloudFetchAt(Date.now())
     return { success: true, message: '恢复成功' }
   } catch (e) {
@@ -928,6 +1014,7 @@ module.exports = {
   updateRecord,
   getRecordById,
   syncRecords,
+  refreshDictionariesFromCloud,
   getSyncStatus,
   cancelPendingCloudReplace,
   getRoutes,

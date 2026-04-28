@@ -123,8 +123,9 @@ exports.main = async (event, context) => {
   const wxContext = cloud.getWXContext()
   const db = cloud.database()
   const records = db.collection('records')
+  const userMeta = db.collection('userMeta')
 
-  const { action, localRecords, record, id, protocolVersion } = event
+  const { action, localRecords, record, id, protocolVersion, routes, plates, mode } = event
 
   try {
     if (action === 'protocol') {
@@ -138,6 +139,49 @@ exports.main = async (event, context) => {
         code: 'PROTOCOL_MISMATCH',
         expectedProtocolVersion: CLOUD_PROTOCOL_VERSION,
         receivedProtocolVersion: protocolVersion || 0
+      })
+    }
+
+    if (action === 'syncMeta') {
+      const localRoutes = Array.isArray(routes) ? routes.map(item => String(item || '').trim()).filter(Boolean) : []
+      const localPlates = Array.isArray(plates) ? plates.map(item => String(item || '').trim()).filter(Boolean) : []
+      const existing = await userMeta
+        .where({
+          _openid: wxContext.OPENID,
+          key: 'dictionary'
+        })
+        .get()
+
+      const current = existing.data && existing.data[0]
+      const shouldReplace = mode === 'replace'
+      const mergedRoutes = shouldReplace
+        ? Array.from(new Set(localRoutes))
+        : Array.from(new Set([...(current && current.routes || []), ...localRoutes]))
+      const mergedPlates = shouldReplace
+        ? Array.from(new Set(localPlates))
+        : Array.from(new Set([...(current && current.plates || []), ...localPlates]))
+      const data = {
+        key: 'dictionary',
+        routes: mergedRoutes,
+        plates: mergedPlates,
+        updatedAt: Date.now(),
+        syncTime: new Date()
+      }
+
+      if (current) {
+        await userMeta.doc(current._id).update({ data })
+      } else {
+        await userMeta.add({
+          data: {
+            _openid: wxContext.OPENID,
+            ...data
+          }
+        })
+      }
+
+      return success({
+        routes: mergedRoutes,
+        plates: mergedPlates
       })
     }
 
@@ -155,6 +199,21 @@ exports.main = async (event, context) => {
 
       if (existing.data && existing.data.length > 0) {
         const target = existing.data[0]
+        const incomingVersion = getRecordVersion(record)
+        const cloudVersion = getRecordVersion(target)
+
+        if (incomingVersion < cloudVersion) {
+          return success({
+            record: {
+              ...target,
+              id: target.id || record.id,
+              synced: true
+            },
+            skipped: true,
+            reason: '云端记录更新，已保留云端版本'
+          })
+        }
+
         await records.doc(target._id).update({
           data: buildRecordData(record)
         })
@@ -197,12 +256,33 @@ exports.main = async (event, context) => {
         .get()
 
       let deleted = 0
+      let skipped = 0
+      let latestRecord = null
+      const incomingVersion = getRecordVersion(record || {})
+
       for (const item of existing.data || []) {
+        const cloudVersion = getRecordVersion(item)
+        if (incomingVersion && incomingVersion < cloudVersion) {
+          skipped++
+          if (!latestRecord || cloudVersion > getRecordVersion(latestRecord)) {
+            latestRecord = item
+          }
+          continue
+        }
+
         await records.doc(item._id).remove()
         deleted++
       }
 
-      return success({ deleted })
+      return success({
+        deleted,
+        skipped,
+        record: latestRecord ? {
+          ...latestRecord,
+          id: latestRecord.id || id,
+          synced: true
+        } : null
+      })
     }
 
     if (action === 'upload') {

@@ -19,8 +19,8 @@
 }
 
 .tab-item.active {
-  background: linear-gradient(135deg, #1976D2 0%, #125DB1 100%);
-  color: #FFFFFF;
+  background: linear-gradient(135deg, var(--blue-color) 0%, var(--blue-color-strong) 100%);
+  color: var(--text-on-primary);
   font-weight: 600;
 }
 
@@ -192,19 +192,19 @@
 }
 
 .bar.blue-out {
-  background: linear-gradient(180deg, #1565C0 0%, #0D47A1 100%);
+  background: linear-gradient(180deg, var(--blue-color) 0%, var(--chart-blue-out) 100%);
 }
 
 .bar.blue-in {
-  background: linear-gradient(180deg, #42A5F5 0%, #1E88E5 100%);
+  background: linear-gradient(180deg, var(--chart-blue-in) 0%, var(--blue-color) 100%);
 }
 
 .bar.red-out {
-  background: linear-gradient(180deg, #C62828 0%, #B71C1C 100%);
+  background: linear-gradient(180deg, var(--red-color) 0%, var(--chart-red-out) 100%);
 }
 
 .bar.red-in {
-  background: linear-gradient(180deg, #EF5350 0%, #E53935 100%);
+  background: linear-gradient(180deg, var(--chart-red-in) 0%, var(--red-color) 100%);
 }
 
 .bar-label {
@@ -259,19 +259,19 @@
 }
 
 .trend-bar.blue-out {
-  background-color: #1976D2 !important;
+  background-color: var(--blue-color) !important;
 }
 
 .trend-bar.blue-in {
-  background-color: #42A5F5 !important;
+  background-color: var(--chart-blue-in) !important;
 }
 
 .trend-bar.red-out {
-  background-color: #D32F2F !important;
+  background-color: var(--red-color) !important;
 }
 
 .trend-bar.red-in {
-  background-color: #EF5350 !important;
+  background-color: var(--chart-red-in) !important;
 }
 
 .trend-num {
@@ -313,27 +313,27 @@
 }
 
 .trend-legend .legend-blue-out {
-  background-color: #1976D2;
+  background-color: var(--blue-color);
 }
 
 .trend-legend .legend-blue-in {
-  background-color: #42A5F5;
+  background-color: var(--chart-blue-in);
 }
 
 .legend-red-out {
-  background-color: #D32F2F;
+  background-color: var(--red-color);
 }
 
 .legend-red-in {
-  background-color: #EF5350;
+  background-color: var(--chart-red-in);
 }
 
 .trend-legend .legend-red-out {
-  background-color: #D32F2F;
+  background-color: var(--red-color);
 }
 
 .trend-legend .legend-red-in {
-  background-color: #EF5350;
+  background-color: var(--chart-red-in);
 }
 
 .empty-tip {
@@ -378,9 +378,9 @@
 }
 
 .legend-blue-out {
-  background-color: #1565C0;
+  background-color: var(--blue-color);
 }
 
 .legend-blue-in {
-  background-color: #42A5F5;
+  background-color: var(--chart-blue-in);
 }
