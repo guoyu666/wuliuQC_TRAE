@@ -40,6 +40,8 @@ Page({
       selectedYear: year.toString(),
       routeList: ['全部', ...db.getRoutes()],
       isDarkTheme: theme.isDark
+    }, () => {
+      this.setupSyncRefresh()
     })
   },
 
@@ -57,14 +59,63 @@ Page({
     })
   },
 
+  onUnload() {
+    this.clearChartTransitionTimer()
+    if (this.unsubscribeSyncReady) {
+      this.unsubscribeSyncReady()
+      this.unsubscribeSyncReady = null
+    }
+  },
+
+  setupSyncRefresh() {
+    const app = getApp()
+    if (!app || !app.onSyncReady || this.unsubscribeSyncReady) return
+
+    this.unsubscribeSyncReady = app.onSyncReady(() => {
+      const routeList = ['全部', ...db.getRoutes()]
+      const routeIndex = routeList.indexOf(this.data.selectedRoute || '全部')
+
+      this.setData({
+        routeList,
+        routeIndex: routeIndex >= 0 ? routeIndex : 0,
+        selectedRoute: routeIndex > 0 ? routeList[routeIndex] : ''
+      }, () => {
+        this.loadData(true)
+      })
+    })
+  },
+
+  clearChartTransitionTimer() {
+    if (this.chartTransitionTimer) {
+      clearTimeout(this.chartTransitionTimer)
+      this.chartTransitionTimer = null
+    }
+  },
+
+  runWithChartTransition(callback, delay = 400) {
+    this.clearChartTransitionTimer()
+    this.animateBars()
+    this.chartTransitionTimer = setTimeout(() => {
+      this.chartTransitionTimer = null
+      const finish = () => {
+        this.animateBarsIn()
+      }
+
+      if (callback.length > 0) {
+        callback(finish)
+      } else {
+        callback()
+        finish()
+      }
+    }, delay)
+  },
+
   switchTab(e) {
     const tab = e.currentTarget.dataset.tab
     this.setData({ currentTab: tab }, () => {
-      this.animateBars()
-      setTimeout(() => {
-        this.loadData()
-        this.animateBarsIn()
-      }, 400)
+      this.runWithChartTransition((finish) => {
+        Promise.resolve(this.loadData()).finally(finish)
+      })
     })
   },
 
@@ -75,97 +126,82 @@ Page({
       selectedRoute: route === '全部' ? '' : route,
       routeIndex: index
     }, () => {
-      this.animateBars()
-      setTimeout(() => {
-        this.loadData()
-        this.animateBarsIn()
+      this.runWithChartTransition((finish) => {
+        Promise.resolve(this.loadData()).finally(finish)
       }, 200)
     })
   },
 
   onMonthChange(e) {
-    this.animateBars()
-    setTimeout(() => {
+    this.runWithChartTransition((finish) => {
       this.setData({ selectedMonth: e.detail.value }, () => {
-        this.loadData()
-        this.animateBarsIn()
+        Promise.resolve(this.loadData()).finally(finish)
       })
-    }, 400)
+    })
   },
 
   onYearChange(e) {
-    this.animateBars()
-    setTimeout(() => {
+    this.runWithChartTransition((finish) => {
       this.setData({ selectedYear: e.detail.value }, () => {
-        this.loadData()
-        this.animateBarsIn()
+        Promise.resolve(this.loadData()).finally(finish)
       })
-    }, 400)
+    })
   },
 
   goToPrev() {
-    this.animateBars()
-    setTimeout(() => {
+    this.runWithChartTransition((finish) => {
       if (this.data.currentTab === 'month') {
         const [year, month] = this.data.selectedMonth.split('-')
         const date = new Date(parseInt(year), parseInt(month) - 2, 1)
         const newYear = date.getFullYear()
         const newMonth = String(date.getMonth() + 1).padStart(2, '0')
         this.setData({ selectedMonth: `${newYear}-${newMonth}` }, () => {
-          this.loadData()
-          this.animateBarsIn()
+          Promise.resolve(this.loadData()).finally(finish)
         })
       } else {
         const newYear = parseInt(this.data.selectedYear) - 1
         this.setData({ selectedYear: newYear.toString() }, () => {
-          this.loadData()
-          this.animateBarsIn()
+          Promise.resolve(this.loadData()).finally(finish)
         })
       }
-    }, 400)
+    })
   },
 
   goToCurrent() {
-    this.animateBars()
-    setTimeout(() => {
+    this.runWithChartTransition((finish) => {
       const now = new Date()
       const year = now.getFullYear()
       const month = String(now.getMonth() + 1).padStart(2, '0')
       
       if (this.data.currentTab === 'month') {
         this.setData({ selectedMonth: `${year}-${month}` }, () => {
-          this.loadData()
-          this.animateBarsIn()
+          Promise.resolve(this.loadData()).finally(finish)
         })
       } else {
         this.setData({ selectedYear: year.toString() }, () => {
-          this.loadData()
-          this.animateBarsIn()
+          Promise.resolve(this.loadData()).finally(finish)
         })
       }
-    }, 400)
+    })
   },
 
   goToNext() {
-    this.animateBars()
-    setTimeout(() => {
+    this.runWithChartTransition((finish) => {
       if (this.data.currentTab === 'month') {
         const [year, month] = this.data.selectedMonth.split('-')
         const date = new Date(parseInt(year), parseInt(month), 1)
         const newYear = date.getFullYear()
         const newMonth = String(date.getMonth() + 1).padStart(2, '0')
         this.setData({ selectedMonth: `${newYear}-${newMonth}` }, () => {
-          this.loadData()
-          this.animateBarsIn()
+          Promise.resolve(this.loadData()).finally(finish)
         })
       } else {
         const newYear = parseInt(this.data.selectedYear) + 1
         this.setData({ selectedYear: newYear.toString() }, () => {
-          this.loadData()
-          this.animateBarsIn()
+          Promise.resolve(this.loadData()).finally(finish)
         })
       }
-    }, 400)
+    })
   },
 
   animateBars() {
@@ -197,7 +233,7 @@ Page({
   },
 
   loadData(forceRefresh = false) {
-    db.getAllRecords({ forceRefresh }).then(records => {
+    return db.getAllRecords({ forceRefresh }).then(records => {
       if (this.data.currentTab === 'month') {
         this.loadMonthData(records)
       } else {

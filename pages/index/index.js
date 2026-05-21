@@ -53,8 +53,10 @@ Page({
       quickType: 'today',
       routeList: db.getRoutes(),
       plateList: db.getPlates()
+    }, () => {
+      this.setupSyncRefresh()
+      this.loadData()
     })
-    this.loadData()
   },
 
   onShow() {
@@ -67,6 +69,20 @@ Page({
 
   onUnload() {
     this.clearDateSwitchTimer()
+    if (this.unsubscribeSyncReady) {
+      this.unsubscribeSyncReady()
+      this.unsubscribeSyncReady = null
+    }
+  },
+
+  setupSyncRefresh() {
+    const app = getApp()
+    if (!app || !app.onSyncReady || this.unsubscribeSyncReady) return
+
+    this.unsubscribeSyncReady = app.onSyncReady(() => {
+      this.refreshPickerOptions()
+      this.loadData()
+    })
   },
 
   refreshPickerOptions() {
@@ -223,8 +239,12 @@ Page({
     if (selectedDate === today) {
       this.setData({ quickType: 'today' })
     } else {
-      const selected = new Date(selectedDate)
-      const todayDate = new Date(today)
+      const selected = util.parseDate(selectedDate)
+      const todayDate = util.parseDate(today)
+      if (!selected || !todayDate) {
+        this.setData({ quickType: '' })
+        return
+      }
       const diffDays = Math.floor((todayDate - selected) / (1000 * 60 * 60 * 24))
       
       if (diffDays === 1) {
@@ -259,7 +279,7 @@ Page({
   goToYesterday() {
     const baseDate = this.data.selectedDate
     this.switchDateWithAnimation(() => {
-      const currentDate = new Date(baseDate)
+      const currentDate = util.parseDate(baseDate) || new Date()
       currentDate.setDate(currentDate.getDate() - 1)
       const yesterdayDate = util.formatDate(currentDate)
 
@@ -273,7 +293,7 @@ Page({
   goToLastWeek() {
     const baseDate = this.data.selectedDate
     this.switchDateWithAnimation(() => {
-      const currentDate = new Date(baseDate)
+      const currentDate = util.parseDate(baseDate) || new Date()
       currentDate.setDate(currentDate.getDate() - 7)
       const lastWeekDate = util.formatDate(currentDate)
 
@@ -287,7 +307,7 @@ Page({
   goToMonthStart() {
     const baseDate = this.data.selectedDate
     this.switchDateWithAnimation(() => {
-      const currentDate = new Date(baseDate)
+      const currentDate = util.parseDate(baseDate) || new Date()
       const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
       const monthStartDate = util.formatDate(monthStart)
 

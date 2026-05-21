@@ -63,6 +63,7 @@ Page({
       isDarkTheme: theme.isDark,
       syncStatus: db.getSyncStatus()
     })
+    this.setupSyncRefresh()
     this.loadRecords()
   },
 
@@ -82,6 +83,27 @@ Page({
 
   onReachBottom() {
     this.loadMore()
+  },
+
+  onUnload() {
+    if (this.unsubscribeSyncReady) {
+      this.unsubscribeSyncReady()
+      this.unsubscribeSyncReady = null
+    }
+  },
+
+  setupSyncRefresh() {
+    const app = getApp()
+    if (!app || !app.onSyncReady || this.unsubscribeSyncReady) return
+
+    this.unsubscribeSyncReady = app.onSyncReady(() => {
+      this.setData({
+        routeList: db.getRoutes(),
+        plateList: db.getPlates(),
+        syncStatus: db.getSyncStatus()
+      })
+      this.loadRecords(true)
+    })
   },
 
   loadRecords(forceRefresh = false) {

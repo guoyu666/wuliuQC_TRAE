@@ -15,7 +15,38 @@ function formatTime(date) {
   return `${year}-${month}-${day} ${hour}:${minute}:${second}`
 }
 
+function parseDate(dateStr) {
+  if (dateStr instanceof Date) {
+    return Number.isNaN(dateStr.getTime()) ? null : dateStr
+  }
+
+  if (typeof dateStr !== 'string') {
+    return null
+  }
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr)
+  if (!match) {
+    return null
+  }
+
+  const year = parseInt(match[1], 10)
+  const month = parseInt(match[2], 10) - 1
+  const day = parseInt(match[3], 10)
+  const parsed = new Date(year, month, day)
+
+  if (
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month ||
+    parsed.getDate() !== day
+  ) {
+    return null
+  }
+
+  return parsed
+}
+
 module.exports = {
   formatDate,
-  formatTime
+  formatTime,
+  parseDate
 }

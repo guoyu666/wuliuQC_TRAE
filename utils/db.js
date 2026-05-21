@@ -8,7 +8,7 @@ const CLOUD_REPLACE_KEY = 'pendingCloudReplace'
 const CLOUD_FETCH_INTERVAL = 60 * 1000
 const STORAGE_SCHEMA_KEY = 'storageSchemaVersion'
 const STORAGE_SCHEMA_VERSION = 2
-const CLOUD_PROTOCOL_VERSION = 2
+const CLOUD_PROTOCOL_VERSION = 3
 
 function showStorageError(err) {
   console.error('本地存储写入失败', err)
@@ -215,7 +215,7 @@ function mergeRecords(localRecords, cloudRecords) {
       return
     }
 
-    if (normalized.synced === false) {
+    if (normalized.synced === false && getRecordVersion(normalized) >= getRecordVersion(existing)) {
       mergedMap.set(key, {
         ...existing,
         ...normalized,
@@ -321,16 +321,24 @@ function savePlates(plates) {
   return safeSetStorageSync('plates', normalizeNameList(plates))
 }
 
-function syncDictionariesToCloud() {
+function syncDictionariesToCloud(options = {}) {
   if (!isCloudEnabled || !openid) {
     return Promise.resolve({ success: false, message: '未登录云端' })
   }
 
+  const {
+    mode = 'merge',
+    deletedRoutes = [],
+    deletedPlates = []
+  } = options
+
   return callSyncFunction({
     action: 'syncMeta',
-    mode: 'replace',
+    mode,
     routes: getRoutes(),
-    plates: getPlates()
+    plates: getPlates(),
+    deletedRoutes,
+    deletedPlates
   }).catch(err => {
     console.error('线路车牌同步失败', err)
     return { success: false, message: err.message }
@@ -738,7 +746,7 @@ function deleteRoute(routeName) {
   const routes = safeGetStorageSync('routes', [])
   const filtered = routes.filter(r => r !== routeName)
   saveRoutes(filtered)
-  syncDictionariesToCloud()
+  syncDictionariesToCloud({ deletedRoutes: [routeName] })
   return filtered
 }
 
@@ -747,7 +755,7 @@ function deletePlate(plateNumber) {
   const plates = safeGetStorageSync('plates', [])
   const filtered = plates.filter(p => p !== plateNumber)
   savePlates(filtered)
-  syncDictionariesToCloud()
+  syncDictionariesToCloud({ deletedPlates: [plateNumber] })
   return filtered
 }
 
@@ -785,7 +793,7 @@ function importAllData(jsonStr) {
       return { success: false, message: '本地存储失败，请清理空间后重试' }
     }
     setPendingCloudReplace(true, { startedAt: importedAt, failedCount: 0 })
-    syncDictionariesToCloud()
+    syncDictionariesToCloud({ mode: 'replace' })
     setLastCloudFetchAt(Date.now())
     return { success: true, message: '恢复成功' }
   } catch (e) {

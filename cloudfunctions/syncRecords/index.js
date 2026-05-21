@@ -1,7 +1,7 @@
 const cloud = require('wx-server-sdk')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const PAGE_SIZE = 100
-const CLOUD_PROTOCOL_VERSION = 2
+const CLOUD_PROTOCOL_VERSION = 3
 
 function success(payload = {}) {
   return {
@@ -125,7 +125,7 @@ exports.main = async (event, context) => {
   const records = db.collection('records')
   const userMeta = db.collection('userMeta')
 
-  const { action, localRecords, record, id, protocolVersion, routes, plates, mode } = event
+  const { action, localRecords, record, id, protocolVersion, routes, plates, deletedRoutes, deletedPlates, mode } = event
 
   try {
     if (action === 'protocol') {
@@ -145,6 +145,8 @@ exports.main = async (event, context) => {
     if (action === 'syncMeta') {
       const localRoutes = Array.isArray(routes) ? routes.map(item => String(item || '').trim()).filter(Boolean) : []
       const localPlates = Array.isArray(plates) ? plates.map(item => String(item || '').trim()).filter(Boolean) : []
+      const removedRoutes = new Set(Array.isArray(deletedRoutes) ? deletedRoutes.map(item => String(item || '').trim()).filter(Boolean) : [])
+      const removedPlates = new Set(Array.isArray(deletedPlates) ? deletedPlates.map(item => String(item || '').trim()).filter(Boolean) : [])
       const existing = await userMeta
         .where({
           _openid: wxContext.OPENID,
@@ -156,10 +158,10 @@ exports.main = async (event, context) => {
       const shouldReplace = mode === 'replace'
       const mergedRoutes = shouldReplace
         ? Array.from(new Set(localRoutes))
-        : Array.from(new Set([...(current && current.routes || []), ...localRoutes]))
+        : Array.from(new Set([...(current && current.routes || []), ...localRoutes])).filter(item => !removedRoutes.has(item))
       const mergedPlates = shouldReplace
         ? Array.from(new Set(localPlates))
-        : Array.from(new Set([...(current && current.plates || []), ...localPlates]))
+        : Array.from(new Set([...(current && current.plates || []), ...localPlates])).filter(item => !removedPlates.has(item))
       const data = {
         key: 'dictionary',
         routes: mergedRoutes,
