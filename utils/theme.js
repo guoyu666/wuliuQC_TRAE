@@ -1,8 +1,10 @@
+const storage = require('./storage.js')
+
 const theme = {
   isDark: false,
 
   init() {
-    const saved = wx.getStorageSync('theme')
+    const saved = storage.get('theme', 'light')
     if (saved === 'dark') {
       this.isDark = true
       this.apply()
@@ -11,7 +13,7 @@ const theme = {
 
   toggle() {
     this.isDark = !this.isDark
-    wx.setStorageSync('theme', this.isDark ? 'dark' : 'light')
+    storage.set('theme', this.isDark ? 'dark' : 'light')
     this.apply()
     return this.isDark
   },

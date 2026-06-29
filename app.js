@@ -1,5 +1,6 @@
 const db = require('./utils/db.js')
 const theme = require('./utils/theme.js')
+const config = require('./utils/config.js')
 
 App({
   onLaunch: async function () {
@@ -13,7 +14,7 @@ App({
     }
 
     wx.cloud.init({
-      env: 'cloud1-9gvo70lwa48bb03a',
+      env: config.cloud.env,
       traceUser: true
     })
 

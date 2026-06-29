@@ -4,6 +4,8 @@ const theme = require('../../utils/theme.js')
 const feedback = require('../../utils/feedback.js')
 const recordUtils = require('../../utils/records.js')
 const requestGate = require('../../utils/requestGate.js')
+const config = require('../../utils/config.js')
+const fileExport = require('../../utils/fileExport.js')
 
 Page({
   data: {
@@ -40,7 +42,7 @@ Page({
       redIn: 0
     },
     currentPage: 1,
-    pageSize: 10,
+    pageSize: config.history.pageSize,
     hasMore: true,
     totalCount: 0,
     searchKeyword: '',
@@ -459,34 +461,18 @@ Page({
     const jsonStr = db.exportAllData()
     const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
     const filename = `backup_${timestamp}.json`
-    
-    const fs = wx.getFileSystemManager()
-    const savedFilePath = `${wx.env.USER_DATA_PATH}/${filename}`
-    
-    fs.writeFile({
-      filePath: savedFilePath,
+
+    fileExport.writeAndOpen({
+      filename,
       data: jsonStr,
       encoding: 'utf8',
-      success: () => {
-        wx.openDocument({
-          filePath: savedFilePath,
-          fileType: 'json',
-          success: () => {
-            feedback.success()
-            wx.showToast({ title: '备份已生成', icon: 'success' })
-          },
-          fail: () => {
-            feedback.success()
-            wx.showModal({
-              title: '已生成文件',
-              content: 'JSON 备份文件已生成，但当前设备无法直接打开。可稍后在聊天或文件中转发该文件。',
-              showCancel: false
-            })
-          }
-        })
-      },
-      fail: () => {
-        wx.showToast({ title: '创建备份失败', icon: 'none' })
+      fileType: 'json',
+      successTitle: '备份已生成',
+      openFailContent: 'JSON 备份文件已生成，但当前设备无法直接打开。可稍后在聊天或文件中转发该文件。',
+      writeFailTitle: '创建备份失败'
+    }).then(result => {
+      if (result.success) {
+        feedback.success()
       }
     })
   },
@@ -510,24 +496,47 @@ Page({
               success: (modalRes) => {
                 if (modalRes.confirm) {
                   const result = db.importAllData(data.data)
-                  if (result.success) {
-                    feedback.success()
-                    this.hideBackupModal()
-                    this.setData({
-                      routeList: db.getRoutes(),
-                      plateList: db.getPlates()
-                    })
-                    if (db.isLoggedIn()) {
-                      db.syncRecords().finally(() => {
-                        this.loadRecords(true)
-                      })
-                    } else {
-                      this.loadRecords()
-                    }
-                    wx.showToast({ title: '恢复成功', icon: 'success' })
-                  } else {
-                    wx.showToast({ title: result.message, icon: 'none' })
-                  }
+	                  if (result.success) {
+	                    feedback.success()
+	                    this.hideBackupModal()
+	                    this.setData({
+	                      routeList: db.getRoutes(),
+	                      plateList: db.getPlates()
+	                    })
+	                    if (db.isLoggedIn()) {
+	                      wx.showLoading({ title: '上传恢复中...' })
+	                      let syncToast = { title: '恢复并同步成功', icon: 'success' }
+	                      db.syncRecords()
+	                        .then(syncResult => {
+	                          if (!syncResult.success) {
+	                            syncToast = {
+	                              title: syncResult.message || '本地已恢复，云端待重试',
+	                              icon: 'none'
+	                            }
+	                          }
+	                        })
+	                        .catch(err => {
+	                          syncToast = {
+	                            title: err.message || '本地已恢复，云端待重试',
+	                            icon: 'none'
+	                          }
+	                        })
+	                        .finally(() => {
+	                          wx.hideLoading()
+	                          this.loadRecords(true).finally(() => {
+	                            this.refreshSyncStatus()
+	                            wx.showToast(syncToast)
+	                          })
+	                        })
+	                    } else {
+	                      this.loadRecords().finally(() => {
+	                        this.refreshSyncStatus()
+	                        wx.showToast({ title: '本地恢复成功', icon: 'success' })
+	                      })
+	                    }
+	                  } else {
+	                    wx.showToast({ title: result.message, icon: 'none' })
+	                  }
                 }
               }
             })
@@ -611,34 +620,21 @@ Page({
     const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
     const filename = `records_${timestamp}.xlsx`
 
-    const fs = wx.getFileSystemManager()
-    const savedFilePath = `${wx.env.USER_DATA_PATH}/${filename}`
-
-    fs.writeFile({
-      filePath: savedFilePath,
+    fileExport.writeAndOpen({
+      filename,
       data: excelContent,
-      success: () => {
-        wx.hideLoading()
+      fileType: 'xlsx',
+      successTitle: 'Excel已生成',
+      openFailContent: 'Excel 文件已生成，但当前设备无法直接打开。可稍后在聊天或文件中转发该文件。',
+      writeFailTitle: '导出失败'
+    }).then(result => {
+      wx.hideLoading()
+      if (result.success) {
         feedback.success()
-        wx.openDocument({
-          filePath: savedFilePath,
-          fileType: 'xlsx',
-          success: () => {
-            wx.showToast({ title: 'Excel已生成', icon: 'success' })
-          },
-          fail: () => {
-            wx.showModal({
-              title: '已生成文件',
-              content: 'Excel 文件已生成，但当前设备无法直接打开。可稍后在聊天或文件中转发该文件。',
-              showCancel: false
-            })
-          }
-        })
-      },
-      fail: () => {
+      }
+    }).catch(() => {
         wx.hideLoading()
         wx.showToast({ title: '导出失败', icon: 'none' })
-      }
     })
     this.hideExportModal()
   },

@@ -1,8 +1,9 @@
 const cloud = require('wx-server-sdk')
+const config = require('./config.js')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
-const PAGE_SIZE = 100
-const MIN_CLIENT_PROTOCOL_VERSION = 3
-const CLOUD_PROTOCOL_VERSION = 4
+const PAGE_SIZE = config.pageSize
+const MIN_CLIENT_PROTOCOL_VERSION = config.minClientProtocolVersion
+const CLOUD_PROTOCOL_VERSION = config.protocolVersion
 
 function success(payload = {}) {
   return {
@@ -206,6 +207,7 @@ exports.main = async (event, context) => {
   const db = cloud.database()
   const records = db.collection('records')
   const userMeta = db.collection('userMeta')
+  const restoreJobs = db.collection('restoreJobs')
 
   const { action, localRecords, record, id, protocolVersion, routes, plates, routesMeta, platesMeta, deletedRoutes, deletedPlates, mode } = event
 
@@ -374,32 +376,6 @@ exports.main = async (event, context) => {
       })
     }
 
-    if (action === 'upload') {
-      let synced = 0
-      let failed = 0
-
-      for (const record of localRecords) {
-        try {
-          await records.add({
-            data: {
-              _openid: wxContext.OPENID,
-              ...buildRecordData(record, true)
-            }
-          })
-          synced++
-        } catch (err) {
-          console.error('同步单条记录失败', err)
-          failed++
-        }
-      }
-
-      return success({
-        synced,
-        failed,
-        total: localRecords.length
-      })
-    }
-
     if (action === 'download') {
       const data = sortRecords(await fetchAllRecords(records, wxContext.OPENID))
 
@@ -415,9 +391,29 @@ exports.main = async (event, context) => {
       }
 
       const restoreBatchId = `restore_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      let restoreJobId = ''
       const allCloudRecords = await fetchAllRecords(records, wxContext.OPENID, { includeStaged: true })
       const visibleCloudRecords = allCloudRecords.filter(record => !record.replacing)
       const staleStagedRecords = allCloudRecords.filter(record => record.replacing)
+
+      if (action === 'restoreAll') {
+        try {
+          const jobRes = await restoreJobs.add({
+            data: {
+              _openid: wxContext.OPENID,
+              restoreBatchId,
+              status: 'staging',
+              localCount: localRecords.length,
+              cloudCount: visibleCloudRecords.length,
+              createdAt: Date.now(),
+              syncTime: new Date()
+            }
+          })
+          restoreJobId = jobRes._id
+        } catch (err) {
+          console.error('记录恢复批次状态失败', err)
+        }
+      }
 
       for (const record of staleStagedRecords) {
         await records.doc(record._id).remove()
@@ -463,6 +459,21 @@ exports.main = async (event, context) => {
             await records.doc(stagedId).remove()
           } catch (err) {
             console.error('清理失败恢复批次记录失败', stagedId, err)
+          }
+        }
+
+        if (restoreJobId) {
+          try {
+            await restoreJobs.doc(restoreJobId).update({
+              data: {
+                status: 'failed',
+                failedCount: failed,
+                failedAt: Date.now(),
+                syncTime: new Date()
+              }
+            })
+          } catch (err) {
+            console.error('更新恢复批次失败状态失败', err)
           }
         }
 
@@ -529,6 +540,21 @@ exports.main = async (event, context) => {
 
       const merged = sortRecords(mergedRecords)
 
+      if (restoreJobId) {
+        try {
+          await restoreJobs.doc(restoreJobId).update({
+            data: {
+              status: 'completed',
+              mergedCount: merged.length,
+              completedAt: Date.now(),
+              syncTime: new Date()
+            }
+          })
+        } catch (err) {
+          console.error('更新恢复批次完成状态失败', err)
+        }
+      }
+
       return success({
         mergedRecords: merged,
         cloudCount: visibleCloudRecords.length,
@@ -538,7 +564,9 @@ exports.main = async (event, context) => {
         routes: restoredRoutes,
         plates: restoredPlates,
         routesMeta: restoredRoutesMeta,
-        platesMeta: restoredPlatesMeta
+        platesMeta: restoredPlatesMeta,
+        restoreBatchId,
+        restoreJobId
       })
     }
 
@@ -667,22 +695,6 @@ exports.main = async (event, context) => {
         mergedCount: merged.length,
         failedCount: failedSyncIds.length,
         failedSyncIds
-      })
-    }
-
-    if (action === 'clear') {
-      const cloudRecords = await fetchAllRecords(records, wxContext.OPENID, { includeStaged: true })
-
-      for (const record of cloudRecords) {
-        try {
-          await records.doc(record._id).remove()
-        } catch (err) {
-          console.error('删除云端记录失败', err)
-        }
-      }
-
-      return success({
-        deleted: cloudRecords.length
       })
     }
 
