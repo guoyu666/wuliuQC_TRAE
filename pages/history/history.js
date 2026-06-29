@@ -57,6 +57,7 @@ Page({
   },
 
   onLoad() {
+    this.skipNextShowReload = true
     this.setData({
       routeList: db.getRoutes(),
       plateList: db.getPlates(),
@@ -72,6 +73,10 @@ Page({
       isDarkTheme: theme.isDark,
       syncStatus: db.getSyncStatus()
     })
+    if (this.skipNextShowReload) {
+      this.skipNextShowReload = false
+      return
+    }
     this.loadRecords()
   },
 
@@ -108,7 +113,11 @@ Page({
   },
 
   loadRecords(forceRefresh = false) {
+    const requestId = (this.loadRecordsRequestId || 0) + 1
+    this.loadRecordsRequestId = requestId
     return db.getAllRecords({ forceRefresh }).then(sortedRecords => {
+      if (this.loadRecordsRequestId !== requestId) return
+
       const { displayGroupedRecords, hasMore } = this.getPagedGroups(sortedRecords, 1)
 
       this.setData({
@@ -148,6 +157,9 @@ Page({
         } else {
           wx.showToast({ title: result.message || '同步失败', icon: 'none' })
         }
+      })
+      .catch(err => {
+        wx.showToast({ title: err.message || '同步失败', icon: 'none' })
       })
       .finally(() => {
         wx.hideLoading()
@@ -784,11 +796,16 @@ Page({
 
   clearSearch() {
     this.clearSearchTimer()
+    const { displayGroupedRecords, hasMore } = this.getPagedGroups(this.data.records, 1)
     this.setData({
       searchKeyword: '',
-      isSearching: false
-    }, () => {
-      this.loadRecords()
+      isSearching: false,
+      filteredRecordCount: 0,
+      pagingRecords: this.data.records,
+      groupedRecords: displayGroupedRecords,
+      displayGroupedRecords,
+      currentPage: 1,
+      hasMore
     })
   },
 

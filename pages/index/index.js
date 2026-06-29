@@ -41,6 +41,7 @@ Page({
   },
 
   onLoad() {
+    this.skipNextShowReload = true
     this.setData({ isDarkTheme: theme.isDark })
     
     const today = new Date()
@@ -61,9 +62,11 @@ Page({
 
   onShow() {
     this.refreshPickerOptions()
-    db.refreshDictionariesFromCloud().then(() => {
-      this.refreshPickerOptions()
-    })
+    if (this.skipNextShowReload) {
+      this.skipNextShowReload = false
+      return
+    }
+    this.refreshDictionariesIfNeeded()
     this.loadData()
   },
 
@@ -97,6 +100,18 @@ Page({
       plateList,
       routeIndex,
       plateIndex
+    })
+  },
+
+  refreshDictionariesIfNeeded(force = false) {
+    const now = Date.now()
+    if (!force && this.lastDictionaryRefreshAt && now - this.lastDictionaryRefreshAt < 60 * 1000) {
+      return Promise.resolve()
+    }
+
+    this.lastDictionaryRefreshAt = now
+    return db.refreshDictionariesFromCloud().then(() => {
+      this.refreshPickerOptions()
     })
   },
 
@@ -141,7 +156,12 @@ Page({
 
   loadData() {
     const { selectedDate } = this.data
+    const requestId = (this.loadDataRequestId || 0) + 1
+    this.loadDataRequestId = requestId
+
     db.getAllRecords().then(allRecords => {
+      if (this.loadDataRequestId !== requestId) return
+
       const dayRecords = allRecords.filter(r => r.date === selectedDate)
       
       let todayBlueOut = 0

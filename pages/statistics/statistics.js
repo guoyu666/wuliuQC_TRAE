@@ -48,6 +48,7 @@ Page({
   onShow() {
     const routeList = ['全部', ...db.getRoutes()]
     const routeIndex = routeList.indexOf(this.data.selectedRoute || '全部')
+    const forceRefresh = !this.hasLoadedData
 
     this.setData({
       isDarkTheme: theme.isDark,
@@ -55,7 +56,7 @@ Page({
       routeIndex: routeIndex >= 0 ? routeIndex : 0,
       selectedRoute: routeIndex > 0 ? routeList[routeIndex] : ''
     }, () => {
-      this.loadData(true)
+      this.loadData(forceRefresh)
     })
   },
 
@@ -233,7 +234,13 @@ Page({
   },
 
   loadData(forceRefresh = false) {
+    const requestId = (this.loadDataRequestId || 0) + 1
+    this.loadDataRequestId = requestId
+
     return db.getAllRecords({ forceRefresh }).then(records => {
+      if (this.loadDataRequestId !== requestId) return
+
+      this.hasLoadedData = true
       if (this.data.currentTab === 'month') {
         this.loadMonthData(records)
       } else {

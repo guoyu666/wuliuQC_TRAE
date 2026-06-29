@@ -2,6 +2,7 @@ const util = require('./util.js')
 
 let openid = null
 let isCloudEnabled = false
+let syncRecordsPromise = null
 const CLOUD_FUNCTION_NAME = 'syncRecords'
 const CLOUD_CACHE_KEY = 'lastCloudFetchAt'
 const CLOUD_REPLACE_KEY = 'pendingCloudReplace'
@@ -766,7 +767,7 @@ async function getRecordById(id) {
   return records.find(r => r.id === id) || null
 }
 
-async function syncRecords() {
+async function doSyncRecords() {
   if (!isCloudEnabled || !openid) {
     return {
       success: false,
@@ -841,6 +842,17 @@ async function syncRecords() {
       synced: 0
     }
   }
+}
+
+function syncRecords() {
+  if (syncRecordsPromise) {
+    return syncRecordsPromise
+  }
+
+  syncRecordsPromise = doSyncRecords().finally(() => {
+    syncRecordsPromise = null
+  })
+  return syncRecordsPromise
 }
 
 function getSyncStatus() {
