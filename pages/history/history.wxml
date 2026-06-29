@@ -50,15 +50,16 @@
     </view>
   </view>
 
-  <view class="sync-card" wx:if="{{syncStatus && (syncStatus.unsynced > 0 || syncStatus.pendingDeletes > 0 || syncStatus.pendingCloudReplace || !syncStatus.isLoggedIn)}}">
+  <view class="sync-card" wx:if="{{syncStatus && (syncStatus.unsynced > 0 || syncStatus.pendingDeletes > 0 || syncStatus.pendingCloudReplace || !syncStatus.isLoggedIn || syncStatus.lastError)}}">
     <view class="sync-header">
       <view>
         <view class="sync-title">同步状态</view>
-        <view class="sync-desc" wx:if="{{!syncStatus.isLoggedIn}}">当前云端未登录，数据会先保存在本地</view>
+        <view class="sync-desc" wx:if="{{syncStatus.protocolError}}">云函数版本过旧，请部署最新 syncRecords 后重试</view>
+        <view class="sync-desc" wx:elif="{{!syncStatus.isLoggedIn}}">当前云端未登录，数据会先保存在本地</view>
         <view class="sync-desc" wx:elif="{{syncStatus.pendingCloudReplace}}">备份恢复待上传到云端</view>
         <view class="sync-desc" wx:else>有本地变更等待同步</view>
       </view>
-      <view class="sync-action" bindtap="retrySync" wx:if="{{syncStatus.isLoggedIn}}">重试同步</view>
+      <view class="sync-action" bindtap="retrySync" wx:if="{{syncStatus.isLoggedIn || syncStatus.lastError}}">重试同步</view>
     </view>
     <view class="sync-stats">
       <view class="sync-chip synced">已同步 {{syncStatus.synced}}</view>
@@ -68,6 +69,9 @@
     </view>
     <view class="sync-error" wx:if="{{syncStatus.pendingCloudReplaceFailedCount > 0}}">
       失败 {{syncStatus.pendingCloudReplaceFailedCount}} 次{{syncStatus.pendingCloudReplaceLastError ? '：' + syncStatus.pendingCloudReplaceLastError : ''}}
+    </view>
+    <view class="sync-error" wx:if="{{syncStatus.lastError && syncStatus.pendingCloudReplaceFailedCount === 0}}">
+      {{syncStatus.lastError}}
     </view>
     <view class="sync-footer" wx:if="{{syncStatus.pendingCloudReplace}}">
       <view class="sync-cancel" bindtap="cancelPendingRestore">取消恢复同步</view>

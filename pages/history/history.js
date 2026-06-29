@@ -86,6 +86,7 @@ Page({
   },
 
   onUnload() {
+    this.clearSearchTimer()
     if (this.unsubscribeSyncReady) {
       this.unsubscribeSyncReady()
       this.unsubscribeSyncReady = null
@@ -128,13 +129,18 @@ Page({
   },
 
   retrySync() {
-    if (!db.isLoggedIn()) {
-      wx.showToast({ title: '云端未登录，稍后再试', icon: 'none' })
-      return
-    }
-
     wx.showLoading({ title: '同步中...' })
-    db.syncRecords()
+    Promise.resolve()
+      .then(() => db.isLoggedIn() ? { success: true } : db.initCloud())
+      .then(loginResult => {
+        if (!db.isLoggedIn()) {
+          return {
+            success: false,
+            message: loginResult.message || loginResult.error || '云端未登录，稍后再试'
+          }
+        }
+        return db.syncRecords()
+      })
       .then(result => {
         if (result.success) {
           feedback.success()
@@ -764,19 +770,33 @@ Page({
 
   onSearchInput(e) {
     this.setData({ searchKeyword: e.detail.value })
+    this.clearSearchTimer()
+    this.searchTimer = setTimeout(() => {
+      this.performSearch()
+      this.searchTimer = null
+    }, 300)
   },
 
   doSearch() {
+    this.clearSearchTimer()
     this.performSearch()
   },
 
   clearSearch() {
+    this.clearSearchTimer()
     this.setData({
       searchKeyword: '',
       isSearching: false
     }, () => {
       this.loadRecords()
     })
+  },
+
+  clearSearchTimer() {
+    if (this.searchTimer) {
+      clearTimeout(this.searchTimer)
+      this.searchTimer = null
+    }
   },
 
   toggleTheme() {

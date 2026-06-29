@@ -1,7 +1,8 @@
 const cloud = require('wx-server-sdk')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const PAGE_SIZE = 100
-const CLOUD_PROTOCOL_VERSION = 3
+const MIN_CLIENT_PROTOCOL_VERSION = 3
+const CLOUD_PROTOCOL_VERSION = 4
 
 function success(payload = {}) {
   return {
@@ -55,6 +56,87 @@ function getRecordVersion(record) {
 
 function sortRecords(records) {
   return records.sort((a, b) => getRecordVersion(b) - getRecordVersion(a))
+}
+
+function normalizeNameList(list) {
+  if (!Array.isArray(list)) return []
+  return Array.from(new Set(list.map(item => String(item || '').trim()).filter(Boolean)))
+}
+
+function normalizeDictionaryMeta(meta = {}, list = []) {
+  const normalized = {}
+  const now = Date.now()
+
+  if (meta && typeof meta === 'object') {
+    Object.keys(meta).forEach(name => {
+      const key = String(name || '').trim()
+      const item = meta[name] || {}
+      if (!key) return
+      normalized[key] = {
+        name: key,
+        updatedAt: Number(item.updatedAt || 0),
+        deletedAt: Number(item.deletedAt || 0),
+        order: Number(item.order || 0)
+      }
+    })
+  }
+
+  normalizeNameList(list).forEach((name, index) => {
+    const current = normalized[name] || {}
+    if (!current.deletedAt) {
+      normalized[name] = {
+        name,
+        updatedAt: current.updatedAt || now,
+        deletedAt: 0,
+        order: current.order || index + 1
+      }
+    }
+  })
+
+  return normalized
+}
+
+function mergeDictionaryMeta(currentMeta, localMeta, shouldReplace = false) {
+  if (shouldReplace) {
+    return normalizeDictionaryMeta(localMeta)
+  }
+
+  const merged = normalizeDictionaryMeta(currentMeta)
+  const incoming = normalizeDictionaryMeta(localMeta)
+
+  Object.keys(incoming).forEach(name => {
+    const current = merged[name]
+    const next = incoming[name]
+    const currentVersion = Math.max(Number(current && current.updatedAt || 0), Number(current && current.deletedAt || 0))
+    const nextVersion = Math.max(Number(next.updatedAt || 0), Number(next.deletedAt || 0))
+    if (!current || nextVersion >= currentVersion) {
+      merged[name] = next
+    }
+  })
+
+  return merged
+}
+
+function getVisibleNamesFromMeta(meta) {
+  return Object.keys(meta || {})
+    .map(name => meta[name])
+    .filter(item => item && !item.deletedAt)
+    .sort((a, b) => (a.order || 0) - (b.order || 0) || String(a.name).localeCompare(String(b.name), 'zh-Hans-CN'))
+    .map(item => item.name)
+}
+
+function withDeletedNames(meta, names = []) {
+  const result = normalizeDictionaryMeta(meta)
+  const deletedAt = Date.now()
+  normalizeNameList(names).forEach(name => {
+    result[name] = {
+      ...(result[name] || {}),
+      name,
+      updatedAt: deletedAt,
+      deletedAt
+    }
+  })
+  return result
 }
 
 function buildRecordData(record, includeCreateTime = false) {
@@ -125,19 +207,20 @@ exports.main = async (event, context) => {
   const records = db.collection('records')
   const userMeta = db.collection('userMeta')
 
-  const { action, localRecords, record, id, protocolVersion, routes, plates, deletedRoutes, deletedPlates, mode } = event
+  const { action, localRecords, record, id, protocolVersion, routes, plates, routesMeta, platesMeta, deletedRoutes, deletedPlates, mode } = event
 
   try {
     if (action === 'protocol') {
       return success({
-        minClientProtocolVersion: CLOUD_PROTOCOL_VERSION
+        minClientProtocolVersion: MIN_CLIENT_PROTOCOL_VERSION
       })
     }
 
-    if (protocolVersion !== CLOUD_PROTOCOL_VERSION) {
+    if (!protocolVersion || protocolVersion < MIN_CLIENT_PROTOCOL_VERSION || protocolVersion > CLOUD_PROTOCOL_VERSION) {
       return failure('客户端与云函数同步协议不一致，请部署最新版本', {
         code: 'PROTOCOL_MISMATCH',
         expectedProtocolVersion: CLOUD_PROTOCOL_VERSION,
+        minClientProtocolVersion: MIN_CLIENT_PROTOCOL_VERSION,
         receivedProtocolVersion: protocolVersion || 0
       })
     }
@@ -145,8 +228,6 @@ exports.main = async (event, context) => {
     if (action === 'syncMeta') {
       const localRoutes = Array.isArray(routes) ? routes.map(item => String(item || '').trim()).filter(Boolean) : []
       const localPlates = Array.isArray(plates) ? plates.map(item => String(item || '').trim()).filter(Boolean) : []
-      const removedRoutes = new Set(Array.isArray(deletedRoutes) ? deletedRoutes.map(item => String(item || '').trim()).filter(Boolean) : [])
-      const removedPlates = new Set(Array.isArray(deletedPlates) ? deletedPlates.map(item => String(item || '').trim()).filter(Boolean) : [])
       const existing = await userMeta
         .where({
           _openid: wxContext.OPENID,
@@ -156,16 +237,20 @@ exports.main = async (event, context) => {
 
       const current = existing.data && existing.data[0]
       const shouldReplace = mode === 'replace'
-      const mergedRoutes = shouldReplace
-        ? Array.from(new Set(localRoutes))
-        : Array.from(new Set([...(current && current.routes || []), ...localRoutes])).filter(item => !removedRoutes.has(item))
-      const mergedPlates = shouldReplace
-        ? Array.from(new Set(localPlates))
-        : Array.from(new Set([...(current && current.plates || []), ...localPlates])).filter(item => !removedPlates.has(item))
+      const localRouteMeta = withDeletedNames(normalizeDictionaryMeta(routesMeta, localRoutes), deletedRoutes)
+      const localPlateMeta = withDeletedNames(normalizeDictionaryMeta(platesMeta, localPlates), deletedPlates)
+      const currentRouteMeta = normalizeDictionaryMeta(current && current.routesMeta, current && current.routes || [])
+      const currentPlateMeta = normalizeDictionaryMeta(current && current.platesMeta, current && current.plates || [])
+      const mergedRoutesMeta = mergeDictionaryMeta(currentRouteMeta, localRouteMeta, shouldReplace)
+      const mergedPlatesMeta = mergeDictionaryMeta(currentPlateMeta, localPlateMeta, shouldReplace)
+      const mergedRoutes = getVisibleNamesFromMeta(mergedRoutesMeta)
+      const mergedPlates = getVisibleNamesFromMeta(mergedPlatesMeta)
       const data = {
         key: 'dictionary',
         routes: mergedRoutes,
         plates: mergedPlates,
+        routesMeta: mergedRoutesMeta,
+        platesMeta: mergedPlatesMeta,
         updatedAt: Date.now(),
         syncTime: new Date()
       }
@@ -183,7 +268,9 @@ exports.main = async (event, context) => {
 
       return success({
         routes: mergedRoutes,
-        plates: mergedPlates
+        plates: mergedPlates,
+        routesMeta: mergedRoutesMeta,
+        platesMeta: mergedPlatesMeta
       })
     }
 
@@ -322,7 +409,7 @@ exports.main = async (event, context) => {
       })
     }
 
-    if (action === 'replace') {
+    if (action === 'replace' || action === 'restoreAll') {
       if (!localRecords || !Array.isArray(localRecords)) {
         return failure('无效的本地数据')
       }
@@ -388,6 +475,46 @@ exports.main = async (event, context) => {
         })
       }
 
+      let restoredRoutes = null
+      let restoredPlates = null
+      let restoredRoutesMeta = null
+      let restoredPlatesMeta = null
+
+      if (action === 'restoreAll') {
+        restoredRoutesMeta = normalizeDictionaryMeta(routesMeta, routes || [])
+        restoredPlatesMeta = normalizeDictionaryMeta(platesMeta, plates || [])
+        restoredRoutes = getVisibleNamesFromMeta(restoredRoutesMeta)
+        restoredPlates = getVisibleNamesFromMeta(restoredPlatesMeta)
+
+        const existingMeta = await userMeta
+          .where({
+            _openid: wxContext.OPENID,
+            key: 'dictionary'
+          })
+          .get()
+        const currentMeta = existingMeta.data && existingMeta.data[0]
+        const metaData = {
+          key: 'dictionary',
+          routes: restoredRoutes,
+          plates: restoredPlates,
+          routesMeta: restoredRoutesMeta,
+          platesMeta: restoredPlatesMeta,
+          updatedAt: Date.now(),
+          syncTime: new Date()
+        }
+
+        if (currentMeta) {
+          await userMeta.doc(currentMeta._id).update({ data: metaData })
+        } else {
+          await userMeta.add({
+            data: {
+              _openid: wxContext.OPENID,
+              ...metaData
+            }
+          })
+        }
+      }
+
       for (const record of visibleCloudRecords) {
         await records.doc(record._id).remove()
       }
@@ -407,7 +534,11 @@ exports.main = async (event, context) => {
         cloudCount: visibleCloudRecords.length,
         localCount: localRecords.length,
         mergedCount: merged.length,
-        failedCount: failed
+        failedCount: failed,
+        routes: restoredRoutes,
+        plates: restoredPlates,
+        routesMeta: restoredRoutesMeta,
+        platesMeta: restoredPlatesMeta
       })
     }
 
