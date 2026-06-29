@@ -2,6 +2,8 @@ const util = require('../../utils/util.js')
 const db = require('../../utils/db.js')
 const feedback = require('../../utils/feedback.js')
 const theme = require('../../utils/theme.js')
+const recordUtils = require('../../utils/records.js')
+const requestGate = require('../../utils/requestGate.js')
 
 Page({
   data: {
@@ -234,11 +236,10 @@ Page({
   },
 
   loadData(forceRefresh = false) {
-    const requestId = (this.loadDataRequestId || 0) + 1
-    this.loadDataRequestId = requestId
+    const requestId = requestGate.next(this, 'loadData')
 
     return db.getAllRecords({ forceRefresh }).then(records => {
-      if (this.loadDataRequestId !== requestId) return
+      if (!requestGate.isCurrent(this, 'loadData', requestId)) return
 
       this.hasLoadedData = true
       if (this.data.currentTab === 'month') {
@@ -255,30 +256,16 @@ Page({
     feedback.light()
   },
 
-  isValidRecordDate(record) {
-    return record && typeof record.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(record.date)
-  },
-
   loadMonthData(records) {
     const { selectedMonth, selectedRoute } = this.data
-    
-    let filteredRecords = records.filter(r => {
-      return this.isValidRecordDate(r) && r.date.startsWith(selectedMonth)
+    const filteredRecords = recordUtils.filterRecords(records, {
+      month: selectedMonth,
+      routeName: selectedRoute
     })
-    
-    if (selectedRoute) {
-      filteredRecords = filteredRecords.filter(r => r.routeName === selectedRoute)
-    }
-    
-    let totalBlueOut = 0, totalBlueIn = 0, totalRedOut = 0, totalRedIn = 0
+    const stats = recordUtils.calculateStats(filteredRecords)
     const dailyMap = {}
     
     filteredRecords.forEach(r => {
-      totalBlueOut += r.blueOut || 0
-      totalBlueIn += r.blueIn || 0
-      totalRedOut += r.redOut || 0
-      totalRedIn += r.redIn || 0
-      
       if (!dailyMap[r.date]) {
         dailyMap[r.date] = { date: r.date, blueOut: 0, blueIn: 0, redOut: 0, redIn: 0 }
       }
@@ -291,22 +278,20 @@ Page({
     const dailyData = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date))
     const maxDaily = Math.max(...dailyData.map(d => d.blueOut + d.blueIn + d.redOut + d.redIn), 1)
     
-    const totalOut = totalBlueOut + totalRedOut
-    const totalIn = totalBlueIn + totalRedIn
-    const maxValue = Math.max(totalBlueOut + totalRedOut, totalBlueIn + totalRedIn, 1)
+    const maxValue = Math.max(stats.totalOut, stats.totalIn, 1)
     const maxHeight = 160
     
     this.setData({
-      totalBlueOut,
-      totalBlueIn,
-      totalRedOut,
-      totalRedIn,
-      totalOut,
-      totalIn,
-      barBlueOut: Math.max(4, (totalBlueOut / maxValue) * maxHeight),
-      barBlueIn: Math.max(4, (totalBlueIn / maxValue) * maxHeight),
-      barRedOut: Math.max(4, (totalRedOut / maxValue) * maxHeight),
-      barRedIn: Math.max(4, (totalRedIn / maxValue) * maxHeight),
+      totalBlueOut: stats.blueOut,
+      totalBlueIn: stats.blueIn,
+      totalRedOut: stats.redOut,
+      totalRedIn: stats.redIn,
+      totalOut: stats.totalOut,
+      totalIn: stats.totalIn,
+      barBlueOut: Math.max(4, (stats.blueOut / maxValue) * maxHeight),
+      barBlueIn: Math.max(4, (stats.blueIn / maxValue) * maxHeight),
+      barRedOut: Math.max(4, (stats.redOut / maxValue) * maxHeight),
+      barRedIn: Math.max(4, (stats.redIn / maxValue) * maxHeight),
       dailyData,
       maxDaily
     })
@@ -314,24 +299,14 @@ Page({
 
   loadYearData(records) {
     const { selectedYear, selectedRoute } = this.data
-    
-    let filteredRecords = records.filter(r => {
-      return this.isValidRecordDate(r) && r.date.startsWith(selectedYear)
+    const filteredRecords = recordUtils.filterRecords(records, {
+      year: selectedYear,
+      routeName: selectedRoute
     })
-    
-    if (selectedRoute) {
-      filteredRecords = filteredRecords.filter(r => r.routeName === selectedRoute)
-    }
-    
-    let totalBlueOut = 0, totalBlueIn = 0, totalRedOut = 0, totalRedIn = 0
+    const stats = recordUtils.calculateStats(filteredRecords)
     const monthlyMap = {}
     
     filteredRecords.forEach(r => {
-      totalBlueOut += r.blueOut || 0
-      totalBlueIn += r.blueIn || 0
-      totalRedOut += r.redOut || 0
-      totalRedIn += r.redIn || 0
-      
       const month = r.date.substring(5, 7)
       if (!monthlyMap[month]) {
         monthlyMap[month] = { month: parseInt(month), blueOut: 0, blueIn: 0, redOut: 0, redIn: 0 }
@@ -345,22 +320,20 @@ Page({
     const monthlyData = Object.values(monthlyMap).sort((a, b) => a.month - b.month)
     const maxMonthly = Math.max(...monthlyData.map(d => d.blueOut + d.blueIn + d.redOut + d.redIn), 1)
     
-    const totalOut = totalBlueOut + totalRedOut
-    const totalIn = totalBlueIn + totalRedIn
-    const maxValue = Math.max(totalBlueOut + totalRedOut, totalBlueIn + totalRedIn, 1)
+    const maxValue = Math.max(stats.totalOut, stats.totalIn, 1)
     const maxHeight = 160
     
     this.setData({
-      totalBlueOut,
-      totalBlueIn,
-      totalRedOut,
-      totalRedIn,
-      totalOut,
-      totalIn,
-      barBlueOut: Math.max(4, (totalBlueOut / maxValue) * maxHeight),
-      barBlueIn: Math.max(4, (totalBlueIn / maxValue) * maxHeight),
-      barRedOut: Math.max(4, (totalRedOut / maxValue) * maxHeight),
-      barRedIn: Math.max(4, (totalRedIn / maxValue) * maxHeight),
+      totalBlueOut: stats.blueOut,
+      totalBlueIn: stats.blueIn,
+      totalRedOut: stats.redOut,
+      totalRedIn: stats.redIn,
+      totalOut: stats.totalOut,
+      totalIn: stats.totalIn,
+      barBlueOut: Math.max(4, (stats.blueOut / maxValue) * maxHeight),
+      barBlueIn: Math.max(4, (stats.blueIn / maxValue) * maxHeight),
+      barRedOut: Math.max(4, (stats.redOut / maxValue) * maxHeight),
+      barRedIn: Math.max(4, (stats.redIn / maxValue) * maxHeight),
       monthlyData,
       maxMonthly
     })

@@ -2,6 +2,8 @@ const util = require('../../utils/util.js')
 const db = require('../../utils/db.js')
 const theme = require('../../utils/theme.js')
 const feedback = require('../../utils/feedback.js')
+const recordUtils = require('../../utils/records.js')
+const requestGate = require('../../utils/requestGate.js')
 
 Page({
   data: {
@@ -113,10 +115,9 @@ Page({
   },
 
   loadRecords(forceRefresh = false) {
-    const requestId = (this.loadRecordsRequestId || 0) + 1
-    this.loadRecordsRequestId = requestId
+    const requestId = requestGate.next(this, 'loadRecords')
     return db.getAllRecords({ forceRefresh }).then(sortedRecords => {
-      if (this.loadRecordsRequestId !== requestId) return
+      if (!requestGate.isCurrent(this, 'loadRecords', requestId)) return
 
       const { displayGroupedRecords, hasMore } = this.getPagedGroups(sortedRecords, 1)
 
@@ -210,49 +211,10 @@ Page({
     const pageSize = this.data.pageSize
     const loadedRecords = records.slice(0, page * pageSize)
     return {
-      displayGroupedRecords: this.groupByDate(loadedRecords, records),
+      displayGroupedRecords: recordUtils.groupByDate(loadedRecords, records),
       hasMore: records.length > loadedRecords.length,
       loadedCount: loadedRecords.length
     }
-  },
-
-  isValidRecordDate(record) {
-    return record && typeof record.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(record.date)
-  },
-
-  groupByDate(records, summaryRecords = records) {
-    const groups = {}
-
-    records.forEach(record => {
-      const date = this.isValidRecordDate(record) ? record.date : '未知日期'
-      if (!groups[date]) {
-        groups[date] = {
-          date,
-          blueOut: 0,
-          blueIn: 0,
-          redOut: 0,
-          redIn: 0,
-          records: []
-        }
-      }
-      groups[date].records.push(record)
-    })
-
-    summaryRecords.forEach(record => {
-      const date = this.isValidRecordDate(record) ? record.date : '未知日期'
-      if (!groups[date]) return
-
-      groups[date].blueOut += record.blueOut || 0
-      groups[date].blueIn += record.blueIn || 0
-      groups[date].redOut += record.redOut || 0
-      groups[date].redIn += record.redIn || 0
-    })
-
-    return Object.values(groups).sort((a, b) => {
-      if (a.date === '未知日期') return 1
-      if (b.date === '未知日期') return -1
-      return b.date.localeCompare(a.date)
-    })
   },
 
   editData(e) {
@@ -461,33 +423,17 @@ Page({
       endDate: dates[dates.length - 1],
       exportSourceRecords: records,
       exportRecords: records,
-      exportStats: this.calculateStats(records)
+      exportStats: recordUtils.calculateStats(records)
     })
   },
 
   getFilteredRecords() {
     const { records, searchKeyword, filterStartDate, filterEndDate } = this.data
-    
-    let filtered = records
-    
-    if (searchKeyword) {
-      const keyword = searchKeyword.toLowerCase()
-      filtered = filtered.filter(r => {
-        return (r.routeName && r.routeName.toLowerCase().includes(keyword)) ||
-               (r.plateNumber && r.plateNumber.toLowerCase().includes(keyword)) ||
-               (r.remark && r.remark.toLowerCase().includes(keyword))
-      })
-    }
-    
-    if (filterStartDate) {
-      filtered = filtered.filter(r => r.date >= filterStartDate)
-    }
-    
-    if (filterEndDate) {
-      filtered = filtered.filter(r => r.date <= filterEndDate)
-    }
-    
-    return filtered
+    return recordUtils.filterRecords(records, {
+      keyword: searchKeyword,
+      startDate: filterStartDate,
+      endDate: filterEndDate
+    })
   },
 
   hideExportModal() {
@@ -612,25 +558,15 @@ Page({
     const { exportSourceRecords, startDate, endDate } = this.data
     if (!startDate || !endDate) return
 
-    const filtered = exportSourceRecords.filter(r => {
-      return r.date >= startDate && r.date <= endDate
+    const filtered = recordUtils.filterRecords(exportSourceRecords, {
+      startDate,
+      endDate
     })
 
     this.setData({
       exportRecords: filtered,
-      exportStats: this.calculateStats(filtered)
+      exportStats: recordUtils.calculateStats(filtered)
     })
-  },
-
-  calculateStats(records) {
-    let blueOut = 0, blueIn = 0, redOut = 0, redIn = 0
-    records.forEach(r => {
-      blueOut += r.blueOut || 0
-      blueIn += r.blueIn || 0
-      redOut += r.redOut || 0
-      redIn += r.redIn || 0
-    })
-    return { blueOut, blueIn, redOut, redIn }
   },
 
   exportRecords() {
@@ -848,25 +784,11 @@ Page({
 
   performSearch() {
     const { records, searchKeyword, filterStartDate, filterEndDate } = this.data
-    
-    let filtered = records
-    
-    if (searchKeyword) {
-      const keyword = searchKeyword.toLowerCase()
-      filtered = filtered.filter(r => {
-        return (r.routeName && r.routeName.toLowerCase().includes(keyword)) ||
-               (r.plateNumber && r.plateNumber.toLowerCase().includes(keyword)) ||
-               (r.remark && r.remark.toLowerCase().includes(keyword))
-      })
-    }
-    
-    if (filterStartDate) {
-      filtered = filtered.filter(r => r.date >= filterStartDate)
-    }
-    
-    if (filterEndDate) {
-      filtered = filtered.filter(r => r.date <= filterEndDate)
-    }
+    const filtered = recordUtils.filterRecords(records, {
+      keyword: searchKeyword,
+      startDate: filterStartDate,
+      endDate: filterEndDate
+    })
     
     const { displayGroupedRecords, hasMore } = this.getPagedGroups(filtered, 1)
     

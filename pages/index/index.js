@@ -2,6 +2,8 @@ const util = require('../../utils/util.js')
 const db = require('../../utils/db.js')
 const feedback = require('../../utils/feedback.js')
 const theme = require('../../utils/theme.js')
+const recordUtils = require('../../utils/records.js')
+const requestGate = require('../../utils/requestGate.js')
 
 Page({
   data: {
@@ -156,65 +158,31 @@ Page({
 
   loadData() {
     const { selectedDate } = this.data
-    const requestId = (this.loadDataRequestId || 0) + 1
-    this.loadDataRequestId = requestId
+    const requestId = requestGate.next(this, 'loadData')
 
     db.getAllRecords().then(allRecords => {
-      if (this.loadDataRequestId !== requestId) return
+      if (!requestGate.isCurrent(this, 'loadData', requestId)) return
 
-      const dayRecords = allRecords.filter(r => r.date === selectedDate)
-      
-      let todayBlueOut = 0
-      let todayBlueIn = 0
-      let todayRedOut = 0
-      let todayRedIn = 0
-      
-      dayRecords.forEach(r => {
-        todayBlueOut += r.blueOut || 0
-        todayBlueIn += r.blueIn || 0
-        todayRedOut += r.redOut || 0
-        todayRedIn += r.redIn || 0
+      const dayRecords = recordUtils.filterRecords(allRecords, {
+        startDate: selectedDate,
+        endDate: selectedDate
       })
-
-      const routeGrouped = {}
-      dayRecords.forEach(r => {
-        const routeName = r.routeName || '未知'
-        if (!routeGrouped[routeName]) {
-          routeGrouped[routeName] = {
-            routeName: routeName,
-            sendBlueOut: 0,
-            sendRedOut: 0,
-            blueOut: 0,
-            blueIn: 0,
-            redOut: 0,
-            redIn: 0,
-            recordCount: 0
-          }
-        }
-        routeGrouped[routeName].sendBlueOut += r.sendBlueOut || 0
-        routeGrouped[routeName].sendRedOut += r.sendRedOut || 0
-        routeGrouped[routeName].blueOut += r.blueOut || 0
-        routeGrouped[routeName].blueIn += r.blueIn || 0
-        routeGrouped[routeName].redOut += r.redOut || 0
-        routeGrouped[routeName].redIn += r.redIn || 0
-        routeGrouped[routeName].recordCount += 1
-      })
-
-      const routeSummaryList = Object.values(routeGrouped).sort((a, b) => b.blueOut + b.redOut - (a.blueOut + a.redOut))
+      const stats = recordUtils.calculateStats(dayRecords)
+      const routeSummaryList = recordUtils.groupRouteSummary(dayRecords)
       
-      const maxValue = Math.max(todayBlueOut, todayBlueIn, todayRedOut, todayRedIn, 1)
+      const maxValue = Math.max(stats.blueOut, stats.blueIn, stats.redOut, stats.redIn, 1)
       const maxHeight = 160
 
-      const barBlueOut = Math.max(4, (todayBlueOut / maxValue) * maxHeight)
-      const barBlueIn = Math.max(4, (todayBlueIn / maxValue) * maxHeight)
-      const barRedOut = Math.max(4, (todayRedOut / maxValue) * maxHeight)
-      const barRedIn = Math.max(4, (todayRedIn / maxValue) * maxHeight)
+      const barBlueOut = Math.max(4, (stats.blueOut / maxValue) * maxHeight)
+      const barBlueIn = Math.max(4, (stats.blueIn / maxValue) * maxHeight)
+      const barRedOut = Math.max(4, (stats.redOut / maxValue) * maxHeight)
+      const barRedIn = Math.max(4, (stats.redIn / maxValue) * maxHeight)
       
       this.setData({
-        todayBlueOut,
-        todayBlueIn,
-        todayRedOut,
-        todayRedIn,
+        todayBlueOut: stats.blueOut,
+        todayBlueIn: stats.blueIn,
+        todayRedOut: stats.redOut,
+        todayRedIn: stats.redIn,
         todayRecordCount: dayRecords.length,
         barBlueOut,
         barBlueIn,
