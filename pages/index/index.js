@@ -43,6 +43,11 @@ Page({
   },
 
   onLoad() {
+    if (!db.hasAuthorizedLogin()) {
+      wx.redirectTo({ url: '/pages/welcome/welcome' })
+      return
+    }
+
     this.skipNextShowReload = true
     this.setData({ isDarkTheme: theme.isDark })
     
@@ -63,6 +68,11 @@ Page({
   },
 
   onShow() {
+    if (!db.hasAuthorizedLogin()) {
+      wx.redirectTo({ url: '/pages/welcome/welcome' })
+      return
+    }
+
     this.refreshPickerOptions()
     if (this.skipNextShowReload) {
       this.skipNextShowReload = false

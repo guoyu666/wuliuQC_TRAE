@@ -5,7 +5,6 @@ const config = require('./utils/config.js')
 App({
   onLaunch: async function () {
     theme.init()
-    db.migrateStorageIfNeeded()
 
     if (!wx.cloud) {
       console.error('请使用 2.2.3 或以上的基础库以使用云能力')
@@ -18,7 +17,16 @@ App({
       traceUser: true
     })
 
-    const loginResult = await db.initCloud()
+    if (!db.restoreLoginState()) {
+      this.notifySyncReady({ success: false, message: '等待微信授权登录', needLogin: true })
+      return
+    }
+
+    await this.syncCloudData(db.getUserProfile() || {})
+  },
+
+  async syncCloudData(userInfo = {}) {
+    const loginResult = await db.initCloud(userInfo)
 
     if (loginResult.success) {
       console.log('云开发登录成功')
@@ -33,10 +41,23 @@ App({
       } else {
         console.log('同步失败或无需同步', syncResult.message)
       }
+      this.globalData.openid = loginResult.openid
+      this.globalData.userInfo = loginResult.userInfo || null
+      this.globalData.isLoggedIn = true
       this.notifySyncReady(syncResult)
+      return {
+        success: true,
+        loginResult,
+        syncResult
+      }
     } else {
       console.log('云开发登录失败，将使用本地存储模式')
+      this.globalData.isLoggedIn = false
       this.notifySyncReady(loginResult)
+      return {
+        success: false,
+        loginResult
+      }
     }
   },
 

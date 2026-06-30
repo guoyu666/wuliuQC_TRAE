@@ -33,6 +33,11 @@ Page({
   },
 
   onLoad() {
+    if (!db.hasAuthorizedLogin()) {
+      wx.redirectTo({ url: '/pages/welcome/welcome' })
+      return
+    }
+
     const now = new Date()
     const year = now.getFullYear()
     const month = String(now.getMonth() + 1).padStart(2, '0')
@@ -48,6 +53,11 @@ Page({
   },
 
   onShow() {
+    if (!db.hasAuthorizedLogin()) {
+      wx.redirectTo({ url: '/pages/welcome/welcome' })
+      return
+    }
+
     const routeList = ['全部', ...db.getRoutes()]
     const routeIndex = routeList.indexOf(this.data.selectedRoute || '全部')
     const forceRefresh = !this.hasLoadedData

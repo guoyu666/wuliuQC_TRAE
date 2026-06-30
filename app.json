@@ -4,7 +4,8 @@
     "pages/welcome/welcome",
     "pages/index/index",
     "pages/history/history",
-    "pages/statistics/statistics"
+    "pages/statistics/statistics",
+    "pages/sync-detail/sync-detail"
   ],
   "window": {
     "backgroundTextStyle": "light",

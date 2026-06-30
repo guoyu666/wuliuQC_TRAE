@@ -5,6 +5,12 @@ exports.main = async (event, context) => {
   const wxContext = cloud.getWXContext()
   const db = cloud.database()
   const users = db.collection('users')
+  const userInfo = event.userInfo || {}
+  const profile = {
+    nickName: userInfo.nickName || userInfo.nickname || event.nickname || '微信用户',
+    avatarUrl: userInfo.avatarUrl || '',
+    updateTime: new Date()
+  }
 
   try {
     const { data } = await users.where({
@@ -15,7 +21,9 @@ exports.main = async (event, context) => {
       await users.add({
         data: {
           _openid: wxContext.OPENID,
-          nickname: event.nickname || '用户',
+          nickname: profile.nickName,
+          nickName: profile.nickName,
+          avatarUrl: profile.avatarUrl,
           createTime: new Date(),
           lastLoginTime: new Date()
         }
@@ -23,19 +31,28 @@ exports.main = async (event, context) => {
       return {
         success: true,
         isNewUser: true,
-        openid: wxContext.OPENID
+        openid: wxContext.OPENID,
+        userInfo: profile
       }
     } else {
       await users.doc(data[0]._id).update({
         data: {
-          lastLoginTime: new Date()
+          nickname: profile.nickName,
+          nickName: profile.nickName,
+          avatarUrl: profile.avatarUrl,
+          lastLoginTime: new Date(),
+          updateTime: profile.updateTime
         }
       })
       return {
         success: true,
         isNewUser: false,
         openid: wxContext.OPENID,
-        userInfo: data[0]
+        userInfo: {
+          ...data[0],
+          nickName: profile.nickName,
+          avatarUrl: profile.avatarUrl
+        }
       }
     }
   } catch (err) {

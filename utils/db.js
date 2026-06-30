@@ -2,6 +2,7 @@ const util = require('./util.js')
 const config = require('./config.js')
 const storage = require('./storage.js')
 const exporter = require('./exporter.js')
+const backup = require('./backup.js')
 
 let openid = null
 let isCloudEnabled = false
@@ -10,19 +11,59 @@ const CLOUD_FUNCTION_NAME = config.cloud.syncFunctionName
 const CLOUD_CACHE_KEY = 'lastCloudFetchAt'
 const CLOUD_REPLACE_KEY = 'pendingCloudReplace'
 const LAST_SYNC_ERROR_KEY = 'lastSyncError'
+const LAST_SYNC_META_KEY = 'lastSyncMeta'
 const ROUTES_META_KEY = 'routesMeta'
 const PLATES_META_KEY = 'platesMeta'
 const CLOUD_FETCH_INTERVAL = config.cloud.fetchInterval
 const STORAGE_SCHEMA_KEY = 'storageSchemaVersion'
 const STORAGE_SCHEMA_VERSION = config.storage.schemaVersion
 const CLOUD_PROTOCOL_VERSION = config.cloud.protocolVersion
+const RESTORE_CHUNK_SIZE = config.cloud.restoreChunkSize || 50
+const ACTIVE_OPENID_KEY = 'activeOpenid'
+const USER_PROFILE_KEY = 'userProfile'
+const LEGACY_DATA_CLAIMED_BY_KEY = 'legacyDataClaimedBy'
+const USER_SCOPED_KEYS = new Set([
+  'records',
+  'routes',
+  'plates',
+  ROUTES_META_KEY,
+  PLATES_META_KEY,
+  CLOUD_CACHE_KEY,
+  CLOUD_REPLACE_KEY,
+  LAST_SYNC_ERROR_KEY,
+  LAST_SYNC_META_KEY,
+  STORAGE_SCHEMA_KEY,
+  USER_PROFILE_KEY
+])
+const AUTH_STATUS = {
+  UNAUTHORIZED: 'unauthorized',
+  AUTHORIZED: 'authorized',
+  CLOUD_UNAVAILABLE: 'cloudUnavailable'
+}
 
-function safeGetStorageSync(key, fallback) {
+function getScopedStorageKey(key) {
+  if (!USER_SCOPED_KEYS.has(key)) {
+    return key
+  }
+
+  const accountId = openid || storage.get(ACTIVE_OPENID_KEY, '')
+  return accountId ? `user:${accountId}:${key}` : key
+}
+
+function rawGetStorageSync(key, fallback) {
   return storage.get(key, fallback)
 }
 
-function safeSetStorageSync(key, value) {
+function rawSetStorageSync(key, value) {
   return storage.set(key, value)
+}
+
+function safeGetStorageSync(key, fallback) {
+  return storage.get(getScopedStorageKey(key), fallback)
+}
+
+function safeSetStorageSync(key, value) {
+  return storage.set(getScopedStorageKey(key), value)
 }
 
 function setLastSyncError(message = '') {
@@ -31,6 +72,25 @@ function setLastSyncError(message = '') {
 
 function getLastSyncError() {
   return safeGetStorageSync(LAST_SYNC_ERROR_KEY, '')
+}
+
+function setLastSyncMeta(meta = {}) {
+  safeSetStorageSync(LAST_SYNC_META_KEY, {
+    ...getLastSyncMeta(),
+    ...meta,
+    updatedAt: Date.now()
+  })
+}
+
+function getLastSyncMeta() {
+  return safeGetStorageSync(LAST_SYNC_META_KEY, {})
+}
+
+function formatMetaTime(timestamp) {
+  if (!timestamp) return '从未同步'
+  const parsed = new Date(timestamp)
+  if (Number.isNaN(parsed.getTime())) return '从未同步'
+  return util.formatTime(parsed)
 }
 
 function parseRecordTime(value) {
@@ -277,12 +337,13 @@ function buildCloudUpdateData(source, includeCreateTime = false) {
 
 function setOpenid(id) {
   openid = id
-  safeSetStorageSync('openid', id)
+  rawSetStorageSync('openid', id)
+  rawSetStorageSync(ACTIVE_OPENID_KEY, id)
 }
 
 function getOpenid() {
   if (!openid) {
-    openid = safeGetStorageSync('openid', '')
+    openid = rawGetStorageSync('openid', '')
   }
   return openid
 }
@@ -293,18 +354,100 @@ function isLoggedIn() {
 
 function setCloudEnabled(enabled) {
   isCloudEnabled = enabled
-  safeSetStorageSync('cloudEnabled', enabled)
+  rawSetStorageSync('cloudEnabled', enabled)
 }
 
 function getCloudEnabled() {
-  const stored = safeGetStorageSync('cloudEnabled', false)
-  if (!stored) {
+  const stored = rawGetStorageSync('cloudEnabled', false)
+  const storedOpenid = rawGetStorageSync('openid', '')
+  if (!stored || !storedOpenid) {
     return false
   }
 
   isCloudEnabled = true
-  getOpenid()
+  openid = storedOpenid
+  rawSetStorageSync(ACTIVE_OPENID_KEY, storedOpenid)
   return true
+}
+
+function hasAuthorizedLogin() {
+  return !!rawGetStorageSync('openid', '')
+}
+
+function getAuthStatus() {
+  if (!hasAuthorizedLogin()) {
+    return AUTH_STATUS.UNAUTHORIZED
+  }
+  return isCloudEnabled ? AUTH_STATUS.AUTHORIZED : AUTH_STATUS.CLOUD_UNAVAILABLE
+}
+
+function restoreLoginState() {
+  if (!hasAuthorizedLogin()) {
+    isCloudEnabled = false
+    openid = null
+    return false
+  }
+
+  openid = rawGetStorageSync('openid', '')
+  isCloudEnabled = true
+  rawSetStorageSync(ACTIVE_OPENID_KEY, openid)
+  return true
+}
+
+function saveUserProfile(userInfo = {}) {
+  const profile = {
+    nickName: userInfo.nickName || userInfo.nickname || '微信用户',
+    avatarUrl: userInfo.avatarUrl || '',
+    updatedAt: Date.now()
+  }
+  safeSetStorageSync(USER_PROFILE_KEY, profile)
+  return profile
+}
+
+function getUserProfile() {
+  return safeGetStorageSync(USER_PROFILE_KEY, null)
+}
+
+function clearUserProfile() {
+  safeSetStorageSync(USER_PROFILE_KEY, null)
+}
+
+function claimLegacyDataForAccount() {
+  if (!openid) return
+
+  const claimedBy = rawGetStorageSync(LEGACY_DATA_CLAIMED_BY_KEY, '')
+  if (claimedBy && claimedBy !== openid) {
+    return
+  }
+
+  const legacyKeys = [
+    'records',
+    'routes',
+    'plates',
+    ROUTES_META_KEY,
+    PLATES_META_KEY,
+    CLOUD_CACHE_KEY,
+    CLOUD_REPLACE_KEY,
+    LAST_SYNC_ERROR_KEY,
+    STORAGE_SCHEMA_KEY
+  ]
+  let claimed = false
+
+  legacyKeys.forEach(key => {
+    const legacyValue = rawGetStorageSync(key, undefined)
+    if (legacyValue === undefined || legacyValue === '') return
+
+    const scopedKey = getScopedStorageKey(key)
+    const scopedValue = rawGetStorageSync(scopedKey, undefined)
+    if (scopedValue === undefined || scopedValue === '') {
+      rawSetStorageSync(scopedKey, legacyValue)
+      claimed = true
+    }
+  })
+
+  if (claimed || !claimedBy) {
+    rawSetStorageSync(LEGACY_DATA_CLAIMED_BY_KEY, openid)
+  }
 }
 
 function normalizeNameList(list) {
@@ -511,15 +654,24 @@ function migrateStorageIfNeeded() {
   }
 }
 
-async function initCloud() {
+async function initCloud(userInfo = {}) {
   try {
-    const result = await wx.cloud.callFunction({ name: 'login' })
+    const result = await wx.cloud.callFunction({
+      name: 'login',
+      data: {
+        userInfo
+      }
+    })
 
     if (result.result && result.result.success) {
       openid = result.result.openid
       isCloudEnabled = true
-      safeSetStorageSync('openid', openid)
-      safeSetStorageSync('cloudEnabled', true)
+      rawSetStorageSync('openid', openid)
+      rawSetStorageSync(ACTIVE_OPENID_KEY, openid)
+      rawSetStorageSync('cloudEnabled', true)
+      const profile = saveUserProfile(result.result.userInfo || userInfo)
+      claimLegacyDataForAccount()
+      migrateStorageIfNeeded()
       console.log('云登录成功', openid)
 
       try {
@@ -528,7 +680,7 @@ async function initCloud() {
       } catch (err) {
         console.error('云函数协议检查失败', err)
         isCloudEnabled = false
-        safeSetStorageSync('cloudEnabled', false)
+        rawSetStorageSync('cloudEnabled', false)
         setLastSyncError(err.message)
         return {
           success: false,
@@ -539,7 +691,8 @@ async function initCloud() {
       return {
         success: true,
         openid: openid,
-        isNewUser: result.result.isNewUser
+        isNewUser: result.result.isNewUser,
+        userInfo: profile
       }
     }
 
@@ -748,6 +901,78 @@ async function getRecordById(id) {
   return records.find(r => r.id === id) || null
 }
 
+async function syncPendingCloudReplace() {
+  const localRecords = getVisibleRecords(getStoredRecords())
+  const startResult = await callSyncFunction({
+    action: 'restoreStart',
+    localCount: localRecords.length
+  })
+
+  if (!startResult.success) {
+    return startResult
+  }
+
+  const restoreBatchId = startResult.restoreBatchId
+  const restoreJobId = startResult.restoreJobId || ''
+  const uploadedRecords = []
+  let failedCount = 0
+
+  setPendingCloudReplace(true, {
+    restoreBatchId,
+    restoreJobId,
+    uploadedCount: 0
+  })
+
+  for (let offset = 0; offset < localRecords.length; offset += RESTORE_CHUNK_SIZE) {
+    const chunk = localRecords.slice(offset, offset + RESTORE_CHUNK_SIZE)
+    const chunkResult = await callSyncFunction({
+      action: 'restoreChunk',
+      restoreBatchId,
+      restoreJobId,
+      offset,
+      localRecords: chunk
+    })
+
+    if (!chunkResult.success) {
+      throw new Error(chunkResult.message || '恢复分片上传失败')
+    }
+
+    failedCount += chunkResult.failedCount || 0
+    uploadedRecords.push(...(chunkResult.uploadedRecords || []))
+    setPendingCloudReplace(true, {
+      restoreBatchId,
+      restoreJobId,
+      uploadedCount: uploadedRecords.length,
+      failedCount
+    })
+  }
+
+  if (failedCount > 0) {
+    await callSyncFunction({
+      action: 'restoreAbort',
+      restoreBatchId,
+      restoreJobId,
+      reason: '部分记录上传失败'
+    }).catch(() => {})
+    return {
+      success: false,
+      message: '恢复数据上传不完整，已保留原云端数据',
+      mergedRecords: uploadedRecords,
+      failedCount
+    }
+  }
+
+  return callSyncFunction({
+    action: 'restoreCommit',
+    restoreBatchId,
+    restoreJobId,
+    routes: getRoutes(),
+    plates: getPlates(),
+    routesMeta: getRoutesMeta(),
+    platesMeta: getPlatesMeta()
+  })
+}
+
 async function doSyncRecords() {
   if (!isCloudEnabled || !openid) {
     return {
@@ -759,14 +984,12 @@ async function doSyncRecords() {
 
   try {
     const pendingCloudReplace = hasPendingCloudReplace()
-    const result = await callSyncFunction({
-      action: pendingCloudReplace ? 'restoreAll' : 'merge',
-      localRecords: pendingCloudReplace ? getVisibleRecords(getStoredRecords()) : getStoredRecords(),
-      routes: pendingCloudReplace ? getRoutes() : undefined,
-      plates: pendingCloudReplace ? getPlates() : undefined,
-      routesMeta: pendingCloudReplace ? getRoutesMeta() : undefined,
-      platesMeta: pendingCloudReplace ? getPlatesMeta() : undefined
-    })
+    const result = pendingCloudReplace
+      ? await syncPendingCloudReplace()
+      : await callSyncFunction({
+        action: 'merge',
+        localRecords: getStoredRecords()
+      })
 
     if (result.success) {
       const mergedRecords = sortRecords((result.mergedRecords || []).map(record => normalizeRecord(record, true)))
@@ -791,6 +1014,18 @@ async function doSyncRecords() {
       }
       setLastCloudFetchAt(Date.now())
       setLastSyncError('')
+      setLastSyncMeta({
+        status: 'success',
+        action: pendingCloudReplace ? 'restore' : 'merge',
+        lastSuccessAt: Date.now(),
+        lastErrorAt: 0,
+        lastError: '',
+        syncedCount: mergedRecords.length,
+        cloudCount: result.cloudCount || 0,
+        localCount: result.localCount || 0,
+        mergedCount: result.mergedCount || mergedRecords.length,
+        failedCount: result.failedCount || 0
+      })
 
       return {
         success: true,
@@ -805,6 +1040,13 @@ async function doSyncRecords() {
       markPendingCloudReplaceFailed(result.message || '恢复同步失败')
     }
     setLastSyncError(result.message || '同步失败')
+    setLastSyncMeta({
+      status: 'failed',
+      action: pendingCloudReplace ? 'restore' : 'merge',
+      lastErrorAt: Date.now(),
+      lastError: result.message || '同步失败',
+      failedCount: result.failedCount || 0
+    })
 
     return {
       success: false,
@@ -817,6 +1059,13 @@ async function doSyncRecords() {
       markPendingCloudReplaceFailed(err.message)
     }
     setLastSyncError(err.message)
+    setLastSyncMeta({
+      status: 'failed',
+      action: hasPendingCloudReplace() ? 'restore' : 'merge',
+      lastErrorAt: Date.now(),
+      lastError: err.message,
+      failedCount: 1
+    })
     return {
       success: false,
       message: err.message,
@@ -843,6 +1092,8 @@ function getSyncStatus() {
   const syncedCount = visibleRecords.filter(r => r.synced).length
   const pendingReplace = getPendingCloudReplaceMeta()
   const lastError = getLastSyncError()
+  const lastSyncMeta = getLastSyncMeta()
+  const authStatus = getAuthStatus()
   return {
     total: visibleRecords.length,
     visibleTotal: visibleRecords.length,
@@ -851,11 +1102,40 @@ function getSyncStatus() {
     unsynced: visibleRecords.length - syncedCount,
     pendingCloudReplace: !!pendingReplace,
     pendingCloudReplaceAt: pendingReplace && pendingReplace.startedAt,
+    pendingCloudReplaceUploadedCount: pendingReplace ? pendingReplace.uploadedCount || 0 : 0,
+    pendingCloudReplaceRestoreBatchId: pendingReplace && pendingReplace.restoreBatchId || '',
     pendingCloudReplaceFailedCount: pendingReplace ? pendingReplace.failedCount || 0 : 0,
     pendingCloudReplaceLastError: pendingReplace && pendingReplace.lastError || '',
+    lastSyncAt: lastSyncMeta.lastSuccessAt || 0,
+    lastSyncText: formatMetaTime(lastSyncMeta.lastSuccessAt),
+    lastErrorAt: lastSyncMeta.lastErrorAt || 0,
+    lastErrorText: formatMetaTime(lastSyncMeta.lastErrorAt),
+    lastSyncAction: lastSyncMeta.action || '',
+    lastSyncedCount: lastSyncMeta.syncedCount || 0,
+    lastCloudCount: lastSyncMeta.cloudCount || 0,
+    lastLocalCount: lastSyncMeta.localCount || 0,
+    lastMergedCount: lastSyncMeta.mergedCount || 0,
+    lastFailedCount: lastSyncMeta.failedCount || 0,
     lastError,
     protocolError: /云函数|协议|版本/.test(lastError),
-    isLoggedIn: isCloudEnabled
+    authStatus,
+    isAuthorized: authStatus !== AUTH_STATUS.UNAUTHORIZED,
+    isLoggedIn: authStatus === AUTH_STATUS.AUTHORIZED
+  }
+}
+
+function getSyncDetails() {
+  const status = getSyncStatus()
+  const profile = getUserProfile() || {}
+  return {
+    ...status,
+    openid: getOpenid(),
+    nickName: profile.nickName || '微信用户',
+    avatarUrl: profile.avatarUrl || '',
+    cloudProtocolVersion: CLOUD_PROTOCOL_VERSION,
+    cloudFetchInterval: CLOUD_FETCH_INTERVAL,
+    cloudFetchIntervalSeconds: Math.round(CLOUD_FETCH_INTERVAL / 1000),
+    restoreChunkSize: RESTORE_CHUNK_SIZE
   }
 }
 
@@ -909,24 +1189,29 @@ function exportAllData() {
   const records = getStoredRecords()
   const routes = safeGetStorageSync('routes', [])
   const plates = safeGetStorageSync('plates', [])
-  const backupData = {
-    version: '1.0',
-    timestamp: new Date().toISOString(),
+  const backupData = backup.buildBackupData({
+    schemaVersion: STORAGE_SCHEMA_VERSION,
     records,
     routes,
     plates,
     routesMeta: getRoutesMeta(),
     platesMeta: getPlatesMeta()
-  }
+  })
   return JSON.stringify(backupData, null, 2)
 }
 
+function inspectBackupData(jsonStr) {
+  return backup.inspectBackup(jsonStr)
+}
+
 function importAllData(jsonStr) {
+  const parsed = backup.parseBackup(jsonStr)
+  if (!parsed.success) {
+    return parsed
+  }
+
   try {
-    const data = JSON.parse(jsonStr)
-    if (!data.version || !data.records) {
-      return { success: false, message: '无效的备份文件格式' }
-    }
+    const data = parsed.data
     const importedAt = Date.now()
     const importedRecords = (data.records || []).map((record, index) => normalizeRecord({
       ...record,
@@ -951,11 +1236,15 @@ function importAllData(jsonStr) {
 module.exports = {
   initCloud,
   migrateStorageIfNeeded,
+  restoreLoginState,
+  hasAuthorizedLogin,
+  getAuthStatus,
   setOpenid,
   getOpenid,
   isLoggedIn,
   setCloudEnabled,
   getCloudEnabled,
+  getUserProfile,
   addRecord,
   getTodayRecords,
   getAllRecords,
@@ -965,6 +1254,7 @@ module.exports = {
   syncRecords,
   refreshDictionariesFromCloud,
   getSyncStatus,
+  getSyncDetails,
   cancelPendingCloudReplace,
   getRoutes,
   addRoute,
@@ -973,6 +1263,7 @@ module.exports = {
   deleteRoute,
   deletePlate,
   exportAllData,
+  inspectBackupData,
   importAllData,
   exportRecordsToCSV: exporter.exportRecordsToCSV,
   exportRecordsToExcel: exporter.exportRecordsToExcel

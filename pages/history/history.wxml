@@ -50,16 +50,18 @@
     </view>
   </view>
 
-  <view class="sync-card" wx:if="{{syncStatus && (syncStatus.unsynced > 0 || syncStatus.pendingDeletes > 0 || syncStatus.pendingCloudReplace || !syncStatus.isLoggedIn || syncStatus.lastError)}}">
+  <view class="sync-card" wx:if="{{syncStatus && (syncStatus.unsynced > 0 || syncStatus.pendingDeletes > 0 || syncStatus.pendingCloudReplace || syncStatus.authStatus !== 'authorized' || syncStatus.lastError)}}">
     <view class="sync-header">
       <view>
         <view class="sync-title">同步状态</view>
         <view class="sync-desc" wx:if="{{syncStatus.protocolError}}">云函数版本过旧，请部署最新 syncRecords 后重试</view>
-        <view class="sync-desc" wx:elif="{{!syncStatus.isLoggedIn}}">当前云端未登录，数据会先保存在本地</view>
+        <view class="sync-desc" wx:elif="{{syncStatus.authStatus === 'unauthorized'}}">请先微信授权，数据会先保存在本地</view>
+        <view class="sync-desc" wx:elif="{{syncStatus.authStatus === 'cloudUnavailable'}}">已授权微信账号，云同步暂不可用</view>
         <view class="sync-desc" wx:elif="{{syncStatus.pendingCloudReplace}}">备份恢复待上传到云端</view>
         <view class="sync-desc" wx:else>有本地变更等待同步</view>
+        <view class="sync-time">上次同步：{{syncStatus.lastSyncText}}</view>
       </view>
-      <view class="sync-action" bindtap="retrySync" wx:if="{{syncStatus.isLoggedIn || syncStatus.lastError}}">重试同步</view>
+      <view class="sync-action" bindtap="retrySync" wx:if="{{syncStatus.isAuthorized || syncStatus.lastError}}">重试同步</view>
     </view>
     <view class="sync-stats">
       <view class="sync-chip synced">已同步 {{syncStatus.synced}}</view>
@@ -76,6 +78,7 @@
     <view class="sync-footer" wx:if="{{syncStatus.pendingCloudReplace}}">
       <view class="sync-cancel" bindtap="cancelPendingRestore">取消恢复同步</view>
     </view>
+    <view class="sync-detail-link" bindtap="goToSyncDetail">查看同步详情</view>
   </view>
 
   <view class="empty-state" wx:if="{{displayGroupedRecords.length === 0}}">

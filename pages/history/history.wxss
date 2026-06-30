@@ -190,6 +190,12 @@
   color: var(--text-secondary);
 }
 
+.sync-time {
+  font-size: 22rpx;
+  color: var(--text-muted);
+  margin-top: 8rpx;
+}
+
 .sync-action {
   flex-shrink: 0;
   font-size: 24rpx;
@@ -250,6 +256,16 @@
   font-size: 24rpx;
   color: var(--text-secondary);
   padding: 10rpx 0;
+}
+
+.sync-detail-link {
+  margin-top: 16rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx solid var(--border-color);
+  color: var(--blue-color);
+  font-size: 24rpx;
+  font-weight: 700;
+  text-align: center;
 }
 
 .record-group {

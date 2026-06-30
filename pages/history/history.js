@@ -61,6 +61,11 @@ Page({
   },
 
   onLoad() {
+    if (!db.hasAuthorizedLogin()) {
+      wx.redirectTo({ url: '/pages/welcome/welcome' })
+      return
+    }
+
     this.skipNextShowReload = true
     this.setData({
       routeList: db.getRoutes(),
@@ -73,6 +78,11 @@ Page({
   },
 
   onShow() {
+    if (!db.hasAuthorizedLogin()) {
+      wx.redirectTo({ url: '/pages/welcome/welcome' })
+      return
+    }
+
     this.setData({
       isDarkTheme: theme.isDark,
       syncStatus: db.getSyncStatus()
@@ -140,7 +150,19 @@ Page({
     this.setData({ syncStatus: db.getSyncStatus() })
   },
 
+  goToSyncDetail() {
+    wx.navigateTo({ url: '/pages/sync-detail/sync-detail' })
+  },
+
   retrySync() {
+    if (!db.hasAuthorizedLogin()) {
+      wx.showToast({ title: '请先微信登录', icon: 'none' })
+      setTimeout(() => {
+        wx.redirectTo({ url: '/pages/welcome/welcome' })
+      }, 500)
+      return
+    }
+
     wx.showLoading({ title: '同步中...' })
     Promise.resolve()
       .then(() => db.isLoggedIn() ? { success: true } : db.initCloud())
@@ -490,53 +512,21 @@ Page({
           filePath: filePath,
           encoding: 'utf8',
           success: (data) => {
+            const jsonStr = data.data
+            const preview = db.inspectBackupData(jsonStr)
+            if (!preview.success) {
+              wx.showToast({ title: preview.message, icon: 'none' })
+              return
+            }
+
+            const backupTime = preview.timestamp ? preview.timestamp.replace('T', ' ').slice(0, 19) : '未知'
+            const legacyText = preview.isLegacy ? '\n检测到旧版备份，将按当前格式迁移。' : ''
             wx.showModal({
               title: '确认恢复',
-              content: '恢复数据会覆盖现有数据，确定要继续吗？',
+              content: `备份版本：${preview.version}\n备份时间：${backupTime}\n记录：${preview.recordCount} 条\n线路：${preview.routeCount} 个\n车牌：${preview.plateCount} 个${legacyText}\n\n恢复数据会覆盖现有数据，确定要继续吗？`,
               success: (modalRes) => {
                 if (modalRes.confirm) {
-                  const result = db.importAllData(data.data)
-	                  if (result.success) {
-	                    feedback.success()
-	                    this.hideBackupModal()
-	                    this.setData({
-	                      routeList: db.getRoutes(),
-	                      plateList: db.getPlates()
-	                    })
-	                    if (db.isLoggedIn()) {
-	                      wx.showLoading({ title: '上传恢复中...' })
-	                      let syncToast = { title: '恢复并同步成功', icon: 'success' }
-	                      db.syncRecords()
-	                        .then(syncResult => {
-	                          if (!syncResult.success) {
-	                            syncToast = {
-	                              title: syncResult.message || '本地已恢复，云端待重试',
-	                              icon: 'none'
-	                            }
-	                          }
-	                        })
-	                        .catch(err => {
-	                          syncToast = {
-	                            title: err.message || '本地已恢复，云端待重试',
-	                            icon: 'none'
-	                          }
-	                        })
-	                        .finally(() => {
-	                          wx.hideLoading()
-	                          this.loadRecords(true).finally(() => {
-	                            this.refreshSyncStatus()
-	                            wx.showToast(syncToast)
-	                          })
-	                        })
-	                    } else {
-	                      this.loadRecords().finally(() => {
-	                        this.refreshSyncStatus()
-	                        wx.showToast({ title: '本地恢复成功', icon: 'success' })
-	                      })
-	                    }
-	                  } else {
-	                    wx.showToast({ title: result.message, icon: 'none' })
-	                  }
+                  this.restoreBackupData(jsonStr)
                 }
               }
             })
@@ -548,6 +538,54 @@ Page({
       },
       fail: () => {
       }
+    })
+  },
+
+  restoreBackupData(jsonStr) {
+    const result = db.importAllData(jsonStr)
+    if (!result.success) {
+      wx.showToast({ title: result.message, icon: 'none' })
+      return
+    }
+
+    feedback.success()
+    this.hideBackupModal()
+    this.setData({
+      routeList: db.getRoutes(),
+      plateList: db.getPlates()
+    })
+
+    if (db.isLoggedIn()) {
+      wx.showLoading({ title: '上传恢复中...' })
+      let syncToast = { title: '恢复并同步成功', icon: 'success' }
+      db.syncRecords()
+        .then(syncResult => {
+          if (!syncResult.success) {
+            syncToast = {
+              title: syncResult.message || '本地已恢复，云端待重试',
+              icon: 'none'
+            }
+          }
+        })
+        .catch(err => {
+          syncToast = {
+            title: err.message || '本地已恢复，云端待重试',
+            icon: 'none'
+          }
+        })
+        .finally(() => {
+          wx.hideLoading()
+          this.loadRecords(true).finally(() => {
+            this.refreshSyncStatus()
+            wx.showToast(syncToast)
+          })
+        })
+      return
+    }
+
+    this.loadRecords().finally(() => {
+      this.refreshSyncStatus()
+      wx.showToast({ title: '本地恢复成功', icon: 'success' })
     })
   },
 

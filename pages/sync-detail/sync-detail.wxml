@@ -1,0 +1,110 @@
+<view class="container {{isDarkTheme ? 'dark-theme' : ''}}" wx:if="{{details}}">
+  <view class="status-card card {{details.authStatus}}">
+    <view class="status-top">
+      <view>
+        <view class="status-title">
+          {{details.authStatus === 'authorized' ? '云同步正常' : (details.authStatus === 'cloudUnavailable' ? '云同步暂不可用' : '未授权微信账号')}}
+        </view>
+        <view class="status-desc">
+          {{details.authStatus === 'authorized' ? '数据会按当前微信账号同步' : (details.authStatus === 'cloudUnavailable' ? '已识别微信账号，本地数据会等待下次同步' : '授权后才能同步自己的云端数据')}}
+        </view>
+      </view>
+      <view class="status-dot"></view>
+    </view>
+    <view class="account-row">
+      <image class="avatar" wx:if="{{details.avatarUrl}}" src="{{details.avatarUrl}}" mode="aspectFill"></image>
+      <view class="avatar placeholder" wx:else>微</view>
+      <view class="account-info">
+        <view class="account-name">{{details.nickName}}</view>
+        <view class="account-id">账号标识：{{details.openid || '未授权'}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="section-title">同步概览</view>
+    <view class="metric-grid">
+      <view class="metric-item">
+        <view class="metric-value">{{details.visibleTotal}}</view>
+        <view class="metric-label">可见记录</view>
+      </view>
+      <view class="metric-item">
+        <view class="metric-value">{{details.synced}}</view>
+        <view class="metric-label">已同步</view>
+      </view>
+      <view class="metric-item warn">
+        <view class="metric-value">{{details.unsynced}}</view>
+        <view class="metric-label">待同步</view>
+      </view>
+      <view class="metric-item danger">
+        <view class="metric-value">{{details.pendingDeletes}}</view>
+        <view class="metric-label">待删除</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="section-title">最近同步</view>
+    <view class="detail-row">
+      <view class="detail-label">上次成功</view>
+      <view class="detail-value">{{details.lastSyncText}}</view>
+    </view>
+    <view class="detail-row">
+      <view class="detail-label">同步动作</view>
+      <view class="detail-value">{{details.lastSyncAction || '暂无'}}</view>
+    </view>
+    <view class="detail-row">
+      <view class="detail-label">上次合并</view>
+      <view class="detail-value">本地 {{details.lastLocalCount}} / 云端 {{details.lastCloudCount}} / 合并 {{details.lastMergedCount}}</view>
+    </view>
+    <view class="detail-row" wx:if="{{details.lastError}}">
+      <view class="detail-label">最近失败</view>
+      <view class="detail-value error">{{details.lastError}}</view>
+    </view>
+    <view class="detail-row" wx:if="{{details.lastErrorAt}}">
+      <view class="detail-label">失败时间</view>
+      <view class="detail-value">{{details.lastErrorText}}</view>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{details.pendingCloudReplace}}">
+    <view class="section-title">恢复任务</view>
+    <view class="detail-row">
+      <view class="detail-label">状态</view>
+      <view class="detail-value">恢复待上传</view>
+    </view>
+    <view class="detail-row">
+      <view class="detail-label">已上传</view>
+      <view class="detail-value">{{details.pendingCloudReplaceUploadedCount}} 条</view>
+    </view>
+    <view class="detail-row">
+      <view class="detail-label">失败次数</view>
+      <view class="detail-value error">{{details.pendingCloudReplaceFailedCount}}</view>
+    </view>
+    <view class="detail-row" wx:if="{{details.pendingCloudReplaceRestoreBatchId}}">
+      <view class="detail-label">批次</view>
+      <view class="detail-value mono">{{details.pendingCloudReplaceRestoreBatchId}}</view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="section-title">同步配置</view>
+    <view class="detail-row">
+      <view class="detail-label">协议版本</view>
+      <view class="detail-value">v{{details.cloudProtocolVersion}}</view>
+    </view>
+    <view class="detail-row">
+      <view class="detail-label">刷新间隔</view>
+      <view class="detail-value">{{details.cloudFetchIntervalSeconds}} 秒</view>
+    </view>
+    <view class="detail-row">
+      <view class="detail-label">恢复分片</view>
+      <view class="detail-value">{{details.restoreChunkSize}} 条/批</view>
+    </view>
+  </view>
+
+  <view class="action-row">
+    <view class="btn-secondary action-btn" bindtap="goLogin" wx:if="{{details.authStatus === 'unauthorized'}}">去授权</view>
+    <view class="btn-primary action-btn" bindtap="retrySync">{{isSyncing ? '同步中...' : '重试同步'}}</view>
+  </view>
+</view>

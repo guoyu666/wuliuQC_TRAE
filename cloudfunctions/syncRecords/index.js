@@ -202,6 +202,89 @@ async function fetchAllRecords(recordsCollection, openid, options = {}) {
   return includeStaged ? allRecords : allRecords.filter(record => !record.replacing)
 }
 
+async function fetchRestoreRecords(recordsCollection, openid, restoreBatchId) {
+  const allRecords = []
+  let skip = 0
+
+  while (true) {
+    const res = await recordsCollection
+      .where({
+        _openid: openid,
+        restoreBatchId,
+        replacing: true
+      })
+      .skip(skip)
+      .limit(PAGE_SIZE)
+      .get()
+
+    allRecords.push(...res.data)
+
+    if (res.data.length < PAGE_SIZE) {
+      break
+    }
+
+    skip += res.data.length
+  }
+
+  return allRecords
+}
+
+async function updateRestoreJob(restoreJobs, restoreJobId, data) {
+  if (!restoreJobId) return
+
+  try {
+    await restoreJobs.doc(restoreJobId).update({
+      data: {
+        ...data,
+        syncTime: new Date()
+      }
+    })
+  } catch (err) {
+    console.error('更新恢复批次状态失败', err)
+  }
+}
+
+async function saveDictionaryState(userMeta, openid, routes, plates, routesMeta, platesMeta) {
+  const restoredRoutesMeta = normalizeDictionaryMeta(routesMeta, routes || [])
+  const restoredPlatesMeta = normalizeDictionaryMeta(platesMeta, plates || [])
+  const restoredRoutes = getVisibleNamesFromMeta(restoredRoutesMeta)
+  const restoredPlates = getVisibleNamesFromMeta(restoredPlatesMeta)
+  const existingMeta = await userMeta
+    .where({
+      _openid: openid,
+      key: 'dictionary'
+    })
+    .get()
+  const currentMeta = existingMeta.data && existingMeta.data[0]
+  const metaData = {
+    key: 'dictionary',
+    routes: restoredRoutes,
+    plates: restoredPlates,
+    routesMeta: restoredRoutesMeta,
+    platesMeta: restoredPlatesMeta,
+    updatedAt: Date.now(),
+    syncTime: new Date()
+  }
+
+  if (currentMeta) {
+    await userMeta.doc(currentMeta._id).update({ data: metaData })
+  } else {
+    await userMeta.add({
+      data: {
+        _openid: openid,
+        ...metaData
+      }
+    })
+  }
+
+  return {
+    routes: restoredRoutes,
+    plates: restoredPlates,
+    routesMeta: restoredRoutesMeta,
+    platesMeta: restoredPlatesMeta
+  }
+}
+
 exports.main = async (event, context) => {
   const wxContext = cloud.getWXContext()
   const db = cloud.database()
@@ -382,6 +465,167 @@ exports.main = async (event, context) => {
       return success({
         records: data,
         count: data.length
+      })
+    }
+
+    if (action === 'restoreStart') {
+      const restoreBatchId = `restore_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      let restoreJobId = ''
+      const allCloudRecords = await fetchAllRecords(records, wxContext.OPENID, { includeStaged: true })
+      const visibleCloudRecords = allCloudRecords.filter(item => !item.replacing)
+      const staleStagedRecords = allCloudRecords.filter(item => item.replacing)
+
+      for (const item of staleStagedRecords) {
+        await records.doc(item._id).remove()
+      }
+
+      try {
+        const jobRes = await restoreJobs.add({
+          data: {
+            _openid: wxContext.OPENID,
+            restoreBatchId,
+            status: 'staging',
+            localCount: Number(event.localCount || 0),
+            cloudCount: visibleCloudRecords.length,
+            uploadedCount: 0,
+            failedCount: 0,
+            createdAt: Date.now(),
+            syncTime: new Date()
+          }
+        })
+        restoreJobId = jobRes._id
+      } catch (err) {
+        console.error('记录恢复批次状态失败', err)
+      }
+
+      return success({
+        restoreBatchId,
+        restoreJobId,
+        cloudCount: visibleCloudRecords.length
+      })
+    }
+
+    if (action === 'restoreChunk') {
+      const { restoreBatchId, restoreJobId, offset = 0 } = event
+      if (!restoreBatchId || !Array.isArray(localRecords)) {
+        return failure('无效的恢复分片数据')
+      }
+
+      const uploadedRecords = []
+      let failed = 0
+
+      for (const localRecord of localRecords) {
+        if (!localRecord.id || localRecord.deletedAt) {
+          continue
+        }
+
+        try {
+          const createRes = await records.add({
+            data: {
+              _openid: wxContext.OPENID,
+              ...buildRecordData(localRecord, true),
+              restoreBatchId,
+              replacing: true
+            }
+          })
+          uploadedRecords.push({
+            ...localRecord,
+            _id: createRes._id,
+            synced: true
+          })
+        } catch (err) {
+          console.error('恢复分片上传单条记录失败', localRecord.id, err)
+          failed++
+          uploadedRecords.push({
+            ...localRecord,
+            synced: false
+          })
+        }
+      }
+
+      await updateRestoreJob(restoreJobs, restoreJobId, {
+        status: failed > 0 ? 'staging_with_errors' : 'staging',
+        lastOffset: offset,
+        uploadedCount: Number(offset || 0) + uploadedRecords.filter(item => item.synced).length,
+        failedCount: failed
+      })
+
+      return success({
+        restoreBatchId,
+        restoreJobId,
+        uploadedRecords,
+        uploadedCount: uploadedRecords.filter(item => item.synced).length,
+        failedCount: failed
+      })
+    }
+
+    if (action === 'restoreAbort') {
+      const { restoreBatchId, restoreJobId, reason = '恢复已取消' } = event
+      if (!restoreBatchId) {
+        return failure('无效的恢复批次')
+      }
+
+      const stagedRecords = await fetchRestoreRecords(records, wxContext.OPENID, restoreBatchId)
+      for (const item of stagedRecords) {
+        await records.doc(item._id).remove()
+      }
+      await updateRestoreJob(restoreJobs, restoreJobId, {
+        status: 'aborted',
+        reason,
+        abortedAt: Date.now()
+      })
+
+      return success({
+        restoreBatchId,
+        removedCount: stagedRecords.length
+      })
+    }
+
+    if (action === 'restoreCommit') {
+      const { restoreBatchId, restoreJobId } = event
+      if (!restoreBatchId) {
+        return failure('无效的恢复批次')
+      }
+
+      const stagedRecords = await fetchRestoreRecords(records, wxContext.OPENID, restoreBatchId)
+      const visibleCloudRecords = await fetchAllRecords(records, wxContext.OPENID)
+      const restoredMeta = await saveDictionaryState(userMeta, wxContext.OPENID, routes, plates, routesMeta, platesMeta)
+
+      for (const item of visibleCloudRecords) {
+        await records.doc(item._id).remove()
+      }
+
+      for (const item of stagedRecords) {
+        await records.doc(item._id).update({
+          data: {
+            replacing: false
+          }
+        })
+      }
+
+      const merged = sortRecords(stagedRecords.map(item => {
+        const { replacing, restoreBatchId: ignoredRestoreBatchId, ...recordData } = item
+        return {
+          ...recordData,
+          synced: true
+        }
+      }))
+
+      await updateRestoreJob(restoreJobs, restoreJobId, {
+        status: 'completed',
+        mergedCount: merged.length,
+        completedAt: Date.now()
+      })
+
+      return success({
+        mergedRecords: merged,
+        cloudCount: visibleCloudRecords.length,
+        localCount: merged.length,
+        mergedCount: merged.length,
+        failedCount: 0,
+        restoreBatchId,
+        restoreJobId,
+        ...restoredMeta
       })
     }
 
