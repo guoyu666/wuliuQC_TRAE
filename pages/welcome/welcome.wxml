@@ -34,9 +34,9 @@
     </view>
 
     <view class="login-card">
-      <view class="login-title">{{isAuthorized ? '已授权微信账号' : '微信账号授权同步'}}</view>
+      <view class="login-title">{{isAuthorized ? '已登录微信账号' : '微信账号登录同步'}}</view>
       <view class="login-desc">
-        {{isAuthorized ? (isCloudUnavailable ? '已识别当前微信账号，云同步暂不可用，可重试登录同步' : '将根据当前微信账号同步您的个人记录') : '授权后可在不同设备间同步自己的线路、车牌和历史记录'}}
+        {{isAuthorized ? (isCloudUnavailable ? '已识别当前微信账号，云同步暂不可用，可重试登录同步' : '将根据当前微信账号同步您的个人记录') : '登录后可按微信账号同步线路、车牌和历史记录；头像昵称授权失败也不会影响同步'}}
       </view>
       <view class="user-row" wx:if="{{isAuthorized && userInfo}}">
         <image class="avatar" wx:if="{{userInfo.avatarUrl}}" src="{{userInfo.avatarUrl}}" mode="aspectFill"></image>
@@ -46,7 +46,7 @@
     </view>
 
     <button class="start-btn" loading="{{isLoading}}" disabled="{{isLoading}}" bindtap="loginWithWechat">
-      <text>{{isAuthorized ? (isCloudUnavailable ? '重试云同步' : '进入应用') : '微信授权并同步'}}</text>
+      <text>{{isAuthorized ? (isCloudUnavailable ? '重试云同步' : '进入应用') : '微信登录并同步'}}</text>
     </button>
 
     <view class="privacy-tip" bindtap="showPrivacyInfo">

@@ -49,10 +49,7 @@ Page({
         this.doWechatLogin(res.userInfo || {})
       },
       fail: () => {
-        wx.showToast({
-          title: '需要授权后同步数据',
-          icon: 'none'
-        })
+        this.doWechatLogin({})
       }
     })
   },

@@ -343,7 +343,7 @@ function setOpenid(id) {
 
 function getOpenid() {
   if (!openid) {
-    openid = rawGetStorageSync('openid', '')
+    openid = rawGetStorageSync('openid', '') || rawGetStorageSync(ACTIVE_OPENID_KEY, '')
   }
   return openid
 }
@@ -359,7 +359,7 @@ function setCloudEnabled(enabled) {
 
 function getCloudEnabled() {
   const stored = rawGetStorageSync('cloudEnabled', false)
-  const storedOpenid = rawGetStorageSync('openid', '')
+  const storedOpenid = rawGetStorageSync('openid', '') || rawGetStorageSync(ACTIVE_OPENID_KEY, '')
   if (!stored || !storedOpenid) {
     return false
   }
@@ -371,7 +371,7 @@ function getCloudEnabled() {
 }
 
 function hasAuthorizedLogin() {
-  return !!rawGetStorageSync('openid', '')
+  return !!(rawGetStorageSync('openid', '') || rawGetStorageSync(ACTIVE_OPENID_KEY, ''))
 }
 
 function getAuthStatus() {
@@ -388,7 +388,8 @@ function restoreLoginState() {
     return false
   }
 
-  openid = rawGetStorageSync('openid', '')
+  openid = rawGetStorageSync('openid', '') || rawGetStorageSync(ACTIVE_OPENID_KEY, '')
+  rawSetStorageSync('openid', openid)
   isCloudEnabled = true
   rawSetStorageSync(ACTIVE_OPENID_KEY, openid)
   return true

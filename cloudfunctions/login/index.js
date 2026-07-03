@@ -6,8 +6,8 @@ exports.main = async (event, context) => {
   const db = cloud.database()
   const users = db.collection('users')
   const userInfo = event.userInfo || {}
-  const profile = {
-    nickName: userInfo.nickName || userInfo.nickname || event.nickname || '微信用户',
+  const incomingProfile = {
+    nickName: userInfo.nickName || userInfo.nickname || event.nickname || '',
     avatarUrl: userInfo.avatarUrl || '',
     updateTime: new Date()
   }
@@ -18,6 +18,11 @@ exports.main = async (event, context) => {
     }).get()
 
     if (data.length === 0) {
+      const profile = {
+        nickName: incomingProfile.nickName || '微信用户',
+        avatarUrl: incomingProfile.avatarUrl,
+        updateTime: incomingProfile.updateTime
+      }
       await users.add({
         data: {
           _openid: wxContext.OPENID,
@@ -35,6 +40,12 @@ exports.main = async (event, context) => {
         userInfo: profile
       }
     } else {
+      const previous = data[0]
+      const profile = {
+        nickName: incomingProfile.nickName || previous.nickName || previous.nickname || '微信用户',
+        avatarUrl: incomingProfile.avatarUrl || previous.avatarUrl || '',
+        updateTime: incomingProfile.updateTime
+      }
       await users.doc(data[0]._id).update({
         data: {
           nickname: profile.nickName,
