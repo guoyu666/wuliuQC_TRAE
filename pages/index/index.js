@@ -451,19 +451,19 @@ Page({
   },
 
   onBlueOutChange(e) {
-    this.setData({ blueOut: parseInt(e.detail.value) || 0 })
+    this.setData({ blueOut: util.normalizeCountInput(e.detail.value) })
   },
 
   onBlueInChange(e) {
-    this.setData({ blueIn: parseInt(e.detail.value) || 0 })
+    this.setData({ blueIn: util.normalizeCountInput(e.detail.value) })
   },
 
   onRedOutChange(e) {
-    this.setData({ redOut: parseInt(e.detail.value) || 0 })
+    this.setData({ redOut: util.normalizeCountInput(e.detail.value) })
   },
 
   onRedInChange(e) {
-    this.setData({ redIn: parseInt(e.detail.value) || 0 })
+    this.setData({ redIn: util.normalizeCountInput(e.detail.value) })
   },
 
   onRemarkChange(e) {
@@ -471,11 +471,11 @@ Page({
   },
 
   onSendBlueOutChange(e) {
-    this.setData({ sendBlueOut: parseInt(e.detail.value) || 0 })
+    this.setData({ sendBlueOut: util.normalizeCountInput(e.detail.value) })
   },
 
   onSendRedOutChange(e) {
-    this.setData({ sendRedOut: parseInt(e.detail.value) || 0 })
+    this.setData({ sendRedOut: util.normalizeCountInput(e.detail.value) })
   },
 
   adjustSendValue(e) {

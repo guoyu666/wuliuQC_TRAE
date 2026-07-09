@@ -4,6 +4,7 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const PAGE_SIZE = config.pageSize
 const MIN_CLIENT_PROTOCOL_VERSION = config.minClientProtocolVersion
 const CLOUD_PROTOCOL_VERSION = config.protocolVersion
+const RESTORE_LOCK_TTL = config.restoreLockTtl || 15 * 60 * 1000
 
 function success(payload = {}) {
   return {
@@ -57,6 +58,18 @@ function getRecordVersion(record) {
 
 function sortRecords(records) {
   return records.sort((a, b) => getRecordVersion(b) - getRecordVersion(a))
+}
+
+function dedupeRecordsById(records = []) {
+  const recordMap = new Map()
+  records.forEach((record, index) => {
+    const key = record.id || record._id || `record-${index}`
+    const current = recordMap.get(key)
+    if (!current || getRecordVersion(record) >= getRecordVersion(current)) {
+      recordMap.set(key, record)
+    }
+  })
+  return Array.from(recordMap.values())
 }
 
 function normalizeNameList(list) {
@@ -199,7 +212,11 @@ async function fetchAllRecords(recordsCollection, openid, options = {}) {
     skip += res.data.length
   }
 
-  return includeStaged ? allRecords : allRecords.filter(record => !record.replacing)
+  if (includeStaged) {
+    return allRecords
+  }
+
+  return dedupeRecordsById(allRecords.filter(record => !record.replacing))
 }
 
 async function fetchRestoreRecords(recordsCollection, openid, restoreBatchId) {
@@ -227,6 +244,38 @@ async function fetchRestoreRecords(recordsCollection, openid, restoreBatchId) {
   }
 
   return allRecords
+}
+
+async function fetchChangedRecords(recordsCollection, openid, since, command) {
+  const sinceTime = Number(since || 0)
+  if (!sinceTime || Number.isNaN(sinceTime)) {
+    return fetchAllRecords(recordsCollection, openid)
+  }
+
+  const allRecords = []
+  let skip = 0
+
+  while (true) {
+    const res = await recordsCollection
+      .where({
+        _openid: openid,
+        replacing: command.neq(true),
+        syncTime: command.gt(new Date(sinceTime))
+      })
+      .skip(skip)
+      .limit(PAGE_SIZE)
+      .get()
+
+    allRecords.push(...res.data)
+
+    if (res.data.length < PAGE_SIZE) {
+      break
+    }
+
+    skip += res.data.length
+  }
+
+  return dedupeRecordsById(allRecords)
 }
 
 async function updateRestoreJob(restoreJobs, restoreJobId, data) {
@@ -285,14 +334,125 @@ async function saveDictionaryState(userMeta, openid, routes, plates, routesMeta,
   }
 }
 
+async function getUserMetaItem(userMeta, openid, key) {
+  const res = await userMeta
+    .where({
+      _openid: openid,
+      key
+    })
+    .get()
+  return res.data && res.data[0]
+}
+
+async function upsertUserMetaItem(userMeta, openid, key, data) {
+  const current = await getUserMetaItem(userMeta, openid, key)
+  const payload = {
+    key,
+    ...data,
+    updatedAt: Date.now(),
+    syncTime: new Date()
+  }
+
+  if (current) {
+    await userMeta.doc(current._id).update({ data: payload })
+    return current._id
+  }
+
+  const res = await userMeta.add({
+    data: {
+      _openid: openid,
+      ...payload
+    }
+  })
+  return res._id
+}
+
+async function getActiveRestoreLock(userMeta, openid) {
+  const lock = await getUserMetaItem(userMeta, openid, 'restoreLock')
+  if (!lock || !lock.restoreBatchId || lock.status !== 'active') {
+    return null
+  }
+
+  const lockedAt = Number(lock.lockedAt || 0)
+  if (lockedAt && Date.now() - lockedAt < RESTORE_LOCK_TTL) {
+    return lock
+  }
+
+  await upsertUserMetaItem(userMeta, openid, 'restoreLock', {
+    ...lock,
+    status: 'expired',
+    expiredAt: Date.now()
+  })
+  return null
+}
+
+async function acquireRestoreLock(userMeta, openid, restoreBatchId) {
+  const activeLock = await getActiveRestoreLock(userMeta, openid)
+  if (activeLock) {
+    return {
+      success: false,
+      lock: activeLock
+    }
+  }
+
+  await upsertUserMetaItem(userMeta, openid, 'restoreLock', {
+    status: 'active',
+    restoreBatchId,
+    lockedAt: Date.now()
+  })
+  return { success: true }
+}
+
+async function releaseRestoreLock(userMeta, openid, restoreBatchId, status = 'released') {
+  const lock = await getUserMetaItem(userMeta, openid, 'restoreLock')
+  if (!lock || lock.restoreBatchId !== restoreBatchId) {
+    return
+  }
+
+  await upsertUserMetaItem(userMeta, openid, 'restoreLock', {
+    ...lock,
+    status,
+    releasedAt: Date.now()
+  })
+}
+
+async function revealStagedRecords(recordsCollection, stagedRecords) {
+  const revealedIds = []
+
+  try {
+    for (const item of stagedRecords) {
+      await recordsCollection.doc(item._id).update({
+        data: {
+          replacing: false
+        }
+      })
+      revealedIds.push(item._id)
+    }
+  } catch (err) {
+    for (const revealedId of revealedIds) {
+      try {
+        await recordsCollection.doc(revealedId).update({
+          data: {
+            replacing: true
+          }
+        })
+      } catch (rollbackErr) {
+        console.error('回滚恢复批次记录失败', revealedId, rollbackErr)
+      }
+    }
+    throw err
+  }
+}
+
 exports.main = async (event, context) => {
   const wxContext = cloud.getWXContext()
   const db = cloud.database()
+  const _ = db.command
   const records = db.collection('records')
   const userMeta = db.collection('userMeta')
   const restoreJobs = db.collection('restoreJobs')
 
-  const { action, localRecords, record, id, protocolVersion, routes, plates, routesMeta, platesMeta, deletedRoutes, deletedPlates, mode } = event
+  const { action, localRecords, record, id, protocolVersion, routes, plates, routesMeta, platesMeta, deletedRoutes, deletedPlates, mode, since } = event
 
   try {
     if (action === 'protocol') {
@@ -444,7 +604,14 @@ exports.main = async (event, context) => {
           continue
         }
 
-        await records.doc(item._id).remove()
+        await records.doc(item._id).update({
+          data: buildRecordData({
+            ...item,
+            ...(record || {}),
+            id,
+            deletedAt: (record && record.deletedAt) || Date.now()
+          })
+        })
         deleted++
       }
 
@@ -464,13 +631,34 @@ exports.main = async (event, context) => {
 
       return success({
         records: data,
-        count: data.length
+        count: data.length,
+        cursorAt: Date.now()
+      })
+    }
+
+    if (action === 'downloadChanges') {
+      const data = sortRecords(await fetchChangedRecords(records, wxContext.OPENID, since, _))
+
+      return success({
+        records: data,
+        count: data.length,
+        since: Number(since || 0),
+        cursorAt: Date.now()
       })
     }
 
     if (action === 'restoreStart') {
       const restoreBatchId = `restore_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
       let restoreJobId = ''
+      const lockResult = await acquireRestoreLock(userMeta, wxContext.OPENID, restoreBatchId)
+      if (!lockResult.success) {
+        return failure('已有恢复任务正在上传，请稍后再试或先取消恢复', {
+          code: 'RESTORE_LOCKED',
+          restoreBatchId: lockResult.lock && lockResult.lock.restoreBatchId,
+          lockedAt: lockResult.lock && lockResult.lock.lockedAt
+        })
+      }
+
       const allCloudRecords = await fetchAllRecords(records, wxContext.OPENID, { includeStaged: true })
       const visibleCloudRecords = allCloudRecords.filter(item => !item.replacing)
       const staleStagedRecords = allCloudRecords.filter(item => item.replacing)
@@ -509,6 +697,12 @@ exports.main = async (event, context) => {
       const { restoreBatchId, restoreJobId, offset = 0 } = event
       if (!restoreBatchId || !Array.isArray(localRecords)) {
         return failure('无效的恢复分片数据')
+      }
+      const activeLock = await getActiveRestoreLock(userMeta, wxContext.OPENID)
+      if (!activeLock || activeLock.restoreBatchId !== restoreBatchId) {
+        return failure('恢复任务已过期或被其他设备占用，请重新开始恢复', {
+          code: 'RESTORE_LOCK_INVALID'
+        })
       }
 
       const uploadedRecords = []
@@ -564,11 +758,18 @@ exports.main = async (event, context) => {
       if (!restoreBatchId) {
         return failure('无效的恢复批次')
       }
+      const activeLock = await getActiveRestoreLock(userMeta, wxContext.OPENID)
+      if (activeLock && activeLock.restoreBatchId !== restoreBatchId) {
+        return failure('恢复任务已被其他设备占用，无法取消当前批次', {
+          code: 'RESTORE_LOCK_INVALID'
+        })
+      }
 
       const stagedRecords = await fetchRestoreRecords(records, wxContext.OPENID, restoreBatchId)
       for (const item of stagedRecords) {
         await records.doc(item._id).remove()
       }
+      await releaseRestoreLock(userMeta, wxContext.OPENID, restoreBatchId, 'aborted')
       await updateRestoreJob(restoreJobs, restoreJobId, {
         status: 'aborted',
         reason,
@@ -586,22 +787,24 @@ exports.main = async (event, context) => {
       if (!restoreBatchId) {
         return failure('无效的恢复批次')
       }
+      const activeLock = await getActiveRestoreLock(userMeta, wxContext.OPENID)
+      if (!activeLock || activeLock.restoreBatchId !== restoreBatchId) {
+        return failure('恢复任务已过期或被其他设备占用，请重新开始恢复', {
+          code: 'RESTORE_LOCK_INVALID'
+        })
+      }
 
       const stagedRecords = await fetchRestoreRecords(records, wxContext.OPENID, restoreBatchId)
-      const visibleCloudRecords = await fetchAllRecords(records, wxContext.OPENID)
+      const allCloudRecords = await fetchAllRecords(records, wxContext.OPENID, { includeStaged: true })
+      const visibleCloudRecords = allCloudRecords.filter(item => !item.replacing && item.restoreBatchId !== restoreBatchId)
       const restoredMeta = await saveDictionaryState(userMeta, wxContext.OPENID, routes, plates, routesMeta, platesMeta)
+
+      await revealStagedRecords(records, stagedRecords)
 
       for (const item of visibleCloudRecords) {
         await records.doc(item._id).remove()
       }
-
-      for (const item of stagedRecords) {
-        await records.doc(item._id).update({
-          data: {
-            replacing: false
-          }
-        })
-      }
+      await releaseRestoreLock(userMeta, wxContext.OPENID, restoreBatchId, 'completed')
 
       const merged = sortRecords(stagedRecords.map(item => {
         const { replacing, restoreBatchId: ignoredRestoreBatchId, ...recordData } = item
@@ -625,11 +828,16 @@ exports.main = async (event, context) => {
         failedCount: 0,
         restoreBatchId,
         restoreJobId,
+        cursorAt: Date.now(),
         ...restoredMeta
       })
     }
 
     if (action === 'replace' || action === 'restoreAll') {
+      return failure('旧版恢复接口已停用，请使用新版分片恢复流程', {
+        code: 'LEGACY_RESTORE_DISABLED'
+      })
+
       if (!localRecords || !Array.isArray(localRecords)) {
         return failure('无效的本地数据')
       }
@@ -848,8 +1056,16 @@ exports.main = async (event, context) => {
               const localVersion = getRecordVersion(localRecord)
               const cloudVersion = getRecordVersion(cloudRecord)
               if (localRecord.synced === false || localVersion >= cloudVersion) {
-                await records.doc(cloudRecord._id).remove()
-                mergedMap.delete(recordId)
+                await records.doc(cloudRecord._id).update({
+                  data: buildRecordData(localRecord)
+                })
+                mergedMap.set(recordId, {
+                  ...cloudRecord,
+                  ...localRecord,
+                  _id: cloudRecord._id,
+                  id: recordId,
+                  synced: true
+                })
                 continue
               }
             } else {
@@ -938,7 +1154,8 @@ exports.main = async (event, context) => {
         localCount: localRecords.length,
         mergedCount: merged.length,
         failedCount: failedSyncIds.length,
-        failedSyncIds
+        failedSyncIds,
+        cursorAt: Date.now()
       })
     }
 

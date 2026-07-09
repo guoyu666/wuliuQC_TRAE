@@ -359,27 +359,27 @@ Page({
   },
 
   onEditSendBlueOutChange(e) {
-    this.setData({ editSendBlueOut: parseInt(e.detail.value) || 0 })
+    this.setData({ editSendBlueOut: util.normalizeCountInput(e.detail.value) })
   },
 
   onEditSendRedOutChange(e) {
-    this.setData({ editSendRedOut: parseInt(e.detail.value) || 0 })
+    this.setData({ editSendRedOut: util.normalizeCountInput(e.detail.value) })
   },
 
   onEditBlueOutChange(e) {
-    this.setData({ editBlueOut: parseInt(e.detail.value) || 0 })
+    this.setData({ editBlueOut: util.normalizeCountInput(e.detail.value) })
   },
 
   onEditBlueInChange(e) {
-    this.setData({ editBlueIn: parseInt(e.detail.value) || 0 })
+    this.setData({ editBlueIn: util.normalizeCountInput(e.detail.value) })
   },
 
   onEditRedOutChange(e) {
-    this.setData({ editRedOut: parseInt(e.detail.value) || 0 })
+    this.setData({ editRedOut: util.normalizeCountInput(e.detail.value) })
   },
 
   onEditRedInChange(e) {
-    this.setData({ editRedIn: parseInt(e.detail.value) || 0 })
+    this.setData({ editRedIn: util.normalizeCountInput(e.detail.value) })
   },
 
   adjustEditValue(e) {

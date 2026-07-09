@@ -9,6 +9,7 @@ let isCloudEnabled = false
 let syncRecordsPromise = null
 const CLOUD_FUNCTION_NAME = config.cloud.syncFunctionName
 const CLOUD_CACHE_KEY = 'lastCloudFetchAt'
+const CLOUD_CURSOR_KEY = 'lastCloudCursorAt'
 const CLOUD_REPLACE_KEY = 'pendingCloudReplace'
 const LAST_SYNC_ERROR_KEY = 'lastSyncError'
 const LAST_SYNC_META_KEY = 'lastSyncMeta'
@@ -29,6 +30,7 @@ const USER_SCOPED_KEYS = new Set([
   ROUTES_META_KEY,
   PLATES_META_KEY,
   CLOUD_CACHE_KEY,
+  CLOUD_CURSOR_KEY,
   CLOUD_REPLACE_KEY,
   LAST_SYNC_ERROR_KEY,
   LAST_SYNC_META_KEY,
@@ -37,9 +39,11 @@ const USER_SCOPED_KEYS = new Set([
 ])
 const AUTH_STATUS = {
   UNAUTHORIZED: 'unauthorized',
+  CHECKING: 'checking',
   AUTHORIZED: 'authorized',
   CLOUD_UNAVAILABLE: 'cloudUnavailable'
 }
+let authState = AUTH_STATUS.UNAUTHORIZED
 
 function getScopedStorageKey(key) {
   if (!USER_SCOPED_KEYS.has(key)) {
@@ -126,6 +130,10 @@ function getRecordVersion(record) {
   )
 }
 
+function getMaxRecordVersion(records = []) {
+  return records.reduce((max, record) => Math.max(max, getRecordVersion(record)), 0)
+}
+
 function getVisibleRecords(records) {
   return records.filter(record => !record.deletedAt)
 }
@@ -148,6 +156,14 @@ function getLastCloudFetchAt() {
 
 function setLastCloudFetchAt(timestamp) {
   safeSetStorageSync(CLOUD_CACHE_KEY, timestamp)
+}
+
+function getLastCloudCursorAt() {
+  return safeGetStorageSync(CLOUD_CURSOR_KEY, 0)
+}
+
+function setLastCloudCursorAt(timestamp) {
+  safeSetStorageSync(CLOUD_CURSOR_KEY, timestamp || 0)
 }
 
 function hasPendingCloudReplace() {
@@ -254,14 +270,17 @@ function sortRecords(records) {
   return records.sort((a, b) => getRecordVersion(b) - getRecordVersion(a))
 }
 
-function mergeRecords(localRecords, cloudRecords) {
+function mergeRecords(localRecords, cloudRecords, options = {}) {
+  const { fullCloudSnapshot = false } = options
   const mergedMap = new Map()
 
   cloudRecords.forEach((record, index) => {
     const normalized = normalizeRecord(record, true)
-    if (normalized.deletedAt) return
     const key = normalized.id || normalized._id || `cloud-${index}`
-    mergedMap.set(key, normalized)
+    const existing = mergedMap.get(key)
+    if (!existing || getRecordVersion(normalized) >= getRecordVersion(existing)) {
+      mergedMap.set(key, normalized)
+    }
   })
 
   localRecords.forEach((record, index) => {
@@ -270,7 +289,21 @@ function mergeRecords(localRecords, cloudRecords) {
     const existing = mergedMap.get(key)
 
     if (!existing) {
-      mergedMap.set(key, normalized)
+      if (!fullCloudSnapshot || normalized.synced === false || normalized.deletedAt) {
+        mergedMap.set(key, normalized)
+      }
+      return
+    }
+
+    if (existing.deletedAt) {
+      if (normalized.synced === false && getRecordVersion(normalized) > getRecordVersion(existing)) {
+        mergedMap.set(key, {
+          ...existing,
+          ...normalized,
+          _id: existing._id || normalized._id,
+          synced: false
+        })
+      }
       return
     }
 
@@ -349,11 +382,14 @@ function getOpenid() {
 }
 
 function isLoggedIn() {
-  return !!getOpenid() && isCloudEnabled
+  return !!getOpenid() && authState === AUTH_STATUS.AUTHORIZED && isCloudEnabled
 }
 
 function setCloudEnabled(enabled) {
   isCloudEnabled = enabled
+  authState = enabled
+    ? AUTH_STATUS.AUTHORIZED
+    : (hasAuthorizedLogin() ? AUTH_STATUS.CLOUD_UNAVAILABLE : AUTH_STATUS.UNAUTHORIZED)
   rawSetStorageSync('cloudEnabled', enabled)
 }
 
@@ -361,13 +397,17 @@ function getCloudEnabled() {
   const stored = rawGetStorageSync('cloudEnabled', false)
   const storedOpenid = rawGetStorageSync('openid', '') || rawGetStorageSync(ACTIVE_OPENID_KEY, '')
   if (!stored || !storedOpenid) {
+    isCloudEnabled = false
+    authState = storedOpenid ? AUTH_STATUS.CLOUD_UNAVAILABLE : AUTH_STATUS.UNAUTHORIZED
     return false
   }
 
-  isCloudEnabled = true
   openid = storedOpenid
+  if (authState === AUTH_STATUS.UNAUTHORIZED) {
+    authState = AUTH_STATUS.CHECKING
+  }
   rawSetStorageSync(ACTIVE_OPENID_KEY, storedOpenid)
-  return true
+  return authState === AUTH_STATUS.AUTHORIZED && isCloudEnabled
 }
 
 function hasAuthorizedLogin() {
@@ -376,9 +416,13 @@ function hasAuthorizedLogin() {
 
 function getAuthStatus() {
   if (!hasAuthorizedLogin()) {
+    authState = AUTH_STATUS.UNAUTHORIZED
     return AUTH_STATUS.UNAUTHORIZED
   }
-  return isCloudEnabled ? AUTH_STATUS.AUTHORIZED : AUTH_STATUS.CLOUD_UNAVAILABLE
+  if (authState === AUTH_STATUS.UNAUTHORIZED) {
+    authState = AUTH_STATUS.CHECKING
+  }
+  return authState
 }
 
 function restoreLoginState() {
@@ -390,7 +434,8 @@ function restoreLoginState() {
 
   openid = rawGetStorageSync('openid', '') || rawGetStorageSync(ACTIVE_OPENID_KEY, '')
   rawSetStorageSync('openid', openid)
-  isCloudEnabled = true
+  isCloudEnabled = false
+  authState = AUTH_STATUS.CHECKING
   rawSetStorageSync(ACTIVE_OPENID_KEY, openid)
   return true
 }
@@ -428,8 +473,10 @@ function claimLegacyDataForAccount() {
     ROUTES_META_KEY,
     PLATES_META_KEY,
     CLOUD_CACHE_KEY,
+    CLOUD_CURSOR_KEY,
     CLOUD_REPLACE_KEY,
     LAST_SYNC_ERROR_KEY,
+    LAST_SYNC_META_KEY,
     STORAGE_SCHEMA_KEY
   ]
   let claimed = false
@@ -656,6 +703,10 @@ function migrateStorageIfNeeded() {
 }
 
 async function initCloud(userInfo = {}) {
+  if (hasAuthorizedLogin()) {
+    authState = AUTH_STATUS.CHECKING
+  }
+
   try {
     const result = await wx.cloud.callFunction({
       name: 'login',
@@ -666,10 +717,10 @@ async function initCloud(userInfo = {}) {
 
     if (result.result && result.result.success) {
       openid = result.result.openid
-      isCloudEnabled = true
+      isCloudEnabled = false
+      authState = AUTH_STATUS.CHECKING
       rawSetStorageSync('openid', openid)
       rawSetStorageSync(ACTIVE_OPENID_KEY, openid)
-      rawSetStorageSync('cloudEnabled', true)
       const profile = saveUserProfile(result.result.userInfo || userInfo)
       claimLegacyDataForAccount()
       migrateStorageIfNeeded()
@@ -681,6 +732,7 @@ async function initCloud(userInfo = {}) {
       } catch (err) {
         console.error('云函数协议检查失败', err)
         isCloudEnabled = false
+        authState = AUTH_STATUS.CLOUD_UNAVAILABLE
         rawSetStorageSync('cloudEnabled', false)
         setLastSyncError(err.message)
         return {
@@ -688,6 +740,10 @@ async function initCloud(userInfo = {}) {
           message: err.message
         }
       }
+
+      isCloudEnabled = true
+      authState = AUTH_STATUS.AUTHORIZED
+      rawSetStorageSync('cloudEnabled', true)
 
       return {
         success: true,
@@ -697,6 +753,9 @@ async function initCloud(userInfo = {}) {
       }
     }
 
+    isCloudEnabled = false
+    authState = hasAuthorizedLogin() ? AUTH_STATUS.CLOUD_UNAVAILABLE : AUTH_STATUS.UNAUTHORIZED
+    rawSetStorageSync('cloudEnabled', false)
     return {
       success: false,
       message: '登录失败'
@@ -704,6 +763,8 @@ async function initCloud(userInfo = {}) {
   } catch (err) {
     console.error('云登录失败', err)
     isCloudEnabled = false
+    authState = hasAuthorizedLogin() ? AUTH_STATUS.CLOUD_UNAVAILABLE : AUTH_STATUS.UNAUTHORIZED
+    rawSetStorageSync('cloudEnabled', false)
     setLastSyncError(err.message)
     return {
       success: false,
@@ -771,6 +832,7 @@ async function getAllRecords(options = {}) {
   const localRecords = getStoredRecords()
   const shouldUseLocalFirst = localRecords.length > 0
   const lastCloudFetchAt = getLastCloudFetchAt()
+  const lastCloudCursorAt = getLastCloudCursorAt()
   const shouldRefreshCloud = Date.now() - lastCloudFetchAt >= CLOUD_FETCH_INTERVAL
 
   if (hasPendingCloudReplace()) {
@@ -779,7 +841,10 @@ async function getAllRecords(options = {}) {
 
   if (isCloudEnabled && openid && (forceRefresh || !shouldUseLocalFirst || shouldRefreshCloud)) {
     try {
-      const result = await callSyncFunction({ action: 'download' })
+      const shouldUseIncremental = !forceRefresh && shouldUseLocalFirst && lastCloudCursorAt > 0
+      const result = await callSyncFunction(shouldUseIncremental
+        ? { action: 'downloadChanges', since: lastCloudCursorAt }
+        : { action: 'download' })
 
       if (result.success) {
         const cloudRecords = (result.records || []).map(record => normalizeRecord({
@@ -787,12 +852,15 @@ async function getAllRecords(options = {}) {
           id: record.id || record._id,
           synced: true
         }, true))
-        const mergedRecords = mergeRecords(localRecords, cloudRecords)
+        const mergedRecords = mergeRecords(localRecords, cloudRecords, {
+          fullCloudSnapshot: !shouldUseIncremental
+        })
         if (!saveStoredRecords(mergedRecords)) {
           return getVisibleRecords(sortRecords(localRecords))
         }
         refreshDictionariesFromCloud()
         setLastCloudFetchAt(Date.now())
+        setLastCloudCursorAt(result.cursorAt || getMaxRecordVersion(cloudRecords) || Date.now())
         if (hasLocalSyncWork(mergedRecords)) {
           syncRecords().catch(err => {
             console.error('后台补同步失败', err)
@@ -1014,6 +1082,7 @@ async function doSyncRecords() {
         saveDictionaryState('plates', PLATES_META_KEY, result.plates || getPlates(), result.platesMeta || getPlatesMeta())
       }
       setLastCloudFetchAt(Date.now())
+      setLastCloudCursorAt(result.cursorAt || getMaxRecordVersion(mergedRecords) || Date.now())
       setLastSyncError('')
       setLastSyncMeta({
         status: 'success',
@@ -1136,7 +1205,9 @@ function getSyncDetails() {
     cloudProtocolVersion: CLOUD_PROTOCOL_VERSION,
     cloudFetchInterval: CLOUD_FETCH_INTERVAL,
     cloudFetchIntervalSeconds: Math.round(CLOUD_FETCH_INTERVAL / 1000),
-    restoreChunkSize: RESTORE_CHUNK_SIZE
+    restoreChunkSize: RESTORE_CHUNK_SIZE,
+    lastCloudCursorAt: getLastCloudCursorAt(),
+    lastCloudCursorText: formatMetaTime(getLastCloudCursorAt())
   }
 }
 
@@ -1228,6 +1299,7 @@ function importAllData(jsonStr) {
     }
     setPendingCloudReplace(true, { startedAt: importedAt, failedCount: 0 })
     setLastCloudFetchAt(Date.now())
+    setLastCloudCursorAt(0)
     return { success: true, message: '恢复成功' }
   } catch (e) {
     return { success: false, message: '解析备份文件失败' }

@@ -4,6 +4,7 @@ Page({
   data: {
     isLoading: false,
     isAuthorized: false,
+    isCheckingAuth: false,
     isCloudUnavailable: false,
     userInfo: null
   },
@@ -20,6 +21,7 @@ Page({
     const authStatus = db.getAuthStatus()
     this.setData({
       isAuthorized: authStatus !== 'unauthorized',
+      isCheckingAuth: authStatus === 'checking',
       isCloudUnavailable: authStatus === 'cloudUnavailable',
       userInfo: db.getUserProfile()
     })
@@ -33,7 +35,7 @@ Page({
       this.goToIndex()
       return
     }
-    if (authStatus === 'cloudUnavailable') {
+    if (authStatus === 'checking' || authStatus === 'cloudUnavailable') {
       this.doWechatLogin(db.getUserProfile() || {})
       return
     }
