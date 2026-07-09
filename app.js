@@ -29,18 +29,7 @@ App({
     const loginResult = await db.initCloud(userInfo)
 
     if (loginResult.success) {
-      console.log('云开发登录成功')
-
-      if (loginResult.isNewUser) {
-        console.log('欢迎新用户')
-      }
-
       const syncResult = await db.syncRecords()
-      if (syncResult.success) {
-        console.log('数据同步完成', syncResult)
-      } else {
-        console.log('同步失败或无需同步', syncResult.message)
-      }
       this.globalData.openid = loginResult.openid
       this.globalData.userInfo = loginResult.userInfo || null
       this.globalData.isLoggedIn = true
@@ -51,7 +40,6 @@ App({
         syncResult
       }
     } else {
-      console.log('云开发登录失败，将使用本地存储模式')
       this.globalData.isLoggedIn = false
       this.notifySyncReady(loginResult)
       return {

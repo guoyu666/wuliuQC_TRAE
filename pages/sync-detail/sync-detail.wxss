@@ -6,6 +6,10 @@
   border-left-color: var(--warning-color);
 }
 
+.status-card.checking {
+  border-left-color: var(--warning-color);
+}
+
 .status-card.unauthorized {
   border-left-color: var(--red-color);
 }
@@ -41,6 +45,11 @@
 }
 
 .cloudUnavailable .status-dot {
+  background-color: var(--warning-color);
+  box-shadow: 0 0 0 8rpx var(--warning-bg);
+}
+
+.checking .status-dot {
   background-color: var(--warning-color);
   box-shadow: 0 0 0 8rpx var(--warning-bg);
 }

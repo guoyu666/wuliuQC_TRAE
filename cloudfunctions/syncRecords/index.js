@@ -192,14 +192,19 @@ function buildRecordData(record, includeCreateTime = false) {
 }
 
 async function fetchAllRecords(recordsCollection, openid, options = {}) {
-  const { includeStaged = false } = options
+  const { includeStaged = false, command = cloud.database().command } = options
   const allRecords = []
-  let skip = 0
+  let lastId = ''
 
   while (true) {
+    const where = { _openid: openid }
+    if (lastId) {
+      where._id = command.gt(lastId)
+    }
+
     const res = await recordsCollection
-      .where({ _openid: openid })
-      .skip(skip)
+      .where(where)
+      .orderBy('_id', 'asc')
       .limit(PAGE_SIZE)
       .get()
 
@@ -209,7 +214,10 @@ async function fetchAllRecords(recordsCollection, openid, options = {}) {
       break
     }
 
-    skip += res.data.length
+    lastId = res.data[res.data.length - 1]._id
+    if (!lastId) {
+      break
+    }
   }
 
   if (includeStaged) {
@@ -219,18 +227,24 @@ async function fetchAllRecords(recordsCollection, openid, options = {}) {
   return dedupeRecordsById(allRecords.filter(record => !record.replacing))
 }
 
-async function fetchRestoreRecords(recordsCollection, openid, restoreBatchId) {
+async function fetchRestoreRecords(recordsCollection, openid, restoreBatchId, options = {}) {
+  const { command = cloud.database().command } = options
   const allRecords = []
-  let skip = 0
+  let lastId = ''
 
   while (true) {
+    const where = {
+      _openid: openid,
+      restoreBatchId,
+      replacing: true
+    }
+    if (lastId) {
+      where._id = command.gt(lastId)
+    }
+
     const res = await recordsCollection
-      .where({
-        _openid: openid,
-        restoreBatchId,
-        replacing: true
-      })
-      .skip(skip)
+      .where(where)
+      .orderBy('_id', 'asc')
       .limit(PAGE_SIZE)
       .get()
 
@@ -240,7 +254,10 @@ async function fetchRestoreRecords(recordsCollection, openid, restoreBatchId) {
       break
     }
 
-    skip += res.data.length
+    lastId = res.data[res.data.length - 1]._id
+    if (!lastId) {
+      break
+    }
   }
 
   return allRecords
@@ -249,20 +266,25 @@ async function fetchRestoreRecords(recordsCollection, openid, restoreBatchId) {
 async function fetchChangedRecords(recordsCollection, openid, since, command) {
   const sinceTime = Number(since || 0)
   if (!sinceTime || Number.isNaN(sinceTime)) {
-    return fetchAllRecords(recordsCollection, openid)
+    return fetchAllRecords(recordsCollection, openid, { command })
   }
 
   const allRecords = []
-  let skip = 0
+  let lastId = ''
 
   while (true) {
+    const where = {
+      _openid: openid,
+      replacing: command.neq(true),
+      syncTime: command.gt(new Date(sinceTime))
+    }
+    if (lastId) {
+      where._id = command.gt(lastId)
+    }
+
     const res = await recordsCollection
-      .where({
-        _openid: openid,
-        replacing: command.neq(true),
-        syncTime: command.gt(new Date(sinceTime))
-      })
-      .skip(skip)
+      .where(where)
+      .orderBy('_id', 'asc')
       .limit(PAGE_SIZE)
       .get()
 
@@ -272,7 +294,10 @@ async function fetchChangedRecords(recordsCollection, openid, since, command) {
       break
     }
 
-    skip += res.data.length
+    lastId = res.data[res.data.length - 1]._id
+    if (!lastId) {
+      break
+    }
   }
 
   return dedupeRecordsById(allRecords)
@@ -627,23 +652,25 @@ exports.main = async (event, context) => {
     }
 
     if (action === 'download') {
+      const queryStartedAt = Date.now()
       const data = sortRecords(await fetchAllRecords(records, wxContext.OPENID))
 
       return success({
         records: data,
         count: data.length,
-        cursorAt: Date.now()
+        cursorAt: queryStartedAt
       })
     }
 
     if (action === 'downloadChanges') {
+      const queryStartedAt = Date.now()
       const data = sortRecords(await fetchChangedRecords(records, wxContext.OPENID, since, _))
 
       return success({
         records: data,
         count: data.length,
         since: Number(since || 0),
-        cursorAt: Date.now()
+        cursorAt: queryStartedAt
       })
     }
 
@@ -659,38 +686,43 @@ exports.main = async (event, context) => {
         })
       }
 
-      const allCloudRecords = await fetchAllRecords(records, wxContext.OPENID, { includeStaged: true })
-      const visibleCloudRecords = allCloudRecords.filter(item => !item.replacing)
-      const staleStagedRecords = allCloudRecords.filter(item => item.replacing)
-
-      for (const item of staleStagedRecords) {
-        await records.doc(item._id).remove()
-      }
-
       try {
-        const jobRes = await restoreJobs.add({
-          data: {
-            _openid: wxContext.OPENID,
-            restoreBatchId,
-            status: 'staging',
-            localCount: Number(event.localCount || 0),
-            cloudCount: visibleCloudRecords.length,
-            uploadedCount: 0,
-            failedCount: 0,
-            createdAt: Date.now(),
-            syncTime: new Date()
-          }
-        })
-        restoreJobId = jobRes._id
-      } catch (err) {
-        console.error('记录恢复批次状态失败', err)
-      }
+        const allCloudRecords = await fetchAllRecords(records, wxContext.OPENID, { includeStaged: true })
+        const visibleCloudRecords = allCloudRecords.filter(item => !item.replacing)
+        const staleStagedRecords = allCloudRecords.filter(item => item.replacing)
 
-      return success({
-        restoreBatchId,
-        restoreJobId,
-        cloudCount: visibleCloudRecords.length
-      })
+        for (const item of staleStagedRecords) {
+          await records.doc(item._id).remove()
+        }
+
+        try {
+          const jobRes = await restoreJobs.add({
+            data: {
+              _openid: wxContext.OPENID,
+              restoreBatchId,
+              status: 'staging',
+              localCount: Number(event.localCount || 0),
+              cloudCount: visibleCloudRecords.length,
+              uploadedCount: 0,
+              failedCount: 0,
+              createdAt: Date.now(),
+              syncTime: new Date()
+            }
+          })
+          restoreJobId = jobRes._id
+        } catch (err) {
+          console.error('记录恢复批次状态失败', err)
+        }
+
+        return success({
+          restoreBatchId,
+          restoreJobId,
+          cloudCount: visibleCloudRecords.length
+        })
+      } catch (err) {
+        await releaseRestoreLock(userMeta, wxContext.OPENID, restoreBatchId, 'failed')
+        throw err
+      }
     }
 
     if (action === 'restoreChunk') {
@@ -783,6 +815,7 @@ exports.main = async (event, context) => {
     }
 
     if (action === 'restoreCommit') {
+      const actionStartedAt = Date.now()
       const { restoreBatchId, restoreJobId } = event
       if (!restoreBatchId) {
         return failure('无效的恢复批次')
@@ -828,7 +861,7 @@ exports.main = async (event, context) => {
         failedCount: 0,
         restoreBatchId,
         restoreJobId,
-        cursorAt: Date.now(),
+        cursorAt: actionStartedAt,
         ...restoredMeta
       })
     }
@@ -837,192 +870,10 @@ exports.main = async (event, context) => {
       return failure('旧版恢复接口已停用，请使用新版分片恢复流程', {
         code: 'LEGACY_RESTORE_DISABLED'
       })
-
-      if (!localRecords || !Array.isArray(localRecords)) {
-        return failure('无效的本地数据')
-      }
-
-      const restoreBatchId = `restore_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-      let restoreJobId = ''
-      const allCloudRecords = await fetchAllRecords(records, wxContext.OPENID, { includeStaged: true })
-      const visibleCloudRecords = allCloudRecords.filter(record => !record.replacing)
-      const staleStagedRecords = allCloudRecords.filter(record => record.replacing)
-
-      if (action === 'restoreAll') {
-        try {
-          const jobRes = await restoreJobs.add({
-            data: {
-              _openid: wxContext.OPENID,
-              restoreBatchId,
-              status: 'staging',
-              localCount: localRecords.length,
-              cloudCount: visibleCloudRecords.length,
-              createdAt: Date.now(),
-              syncTime: new Date()
-            }
-          })
-          restoreJobId = jobRes._id
-        } catch (err) {
-          console.error('记录恢复批次状态失败', err)
-        }
-      }
-
-      for (const record of staleStagedRecords) {
-        await records.doc(record._id).remove()
-      }
-
-      const mergedRecords = []
-      const stagedIds = []
-      let failed = 0
-
-      for (const localRecord of localRecords) {
-        if (!localRecord.id || localRecord.deletedAt) {
-          continue
-        }
-
-        try {
-          const createRes = await records.add({
-            data: {
-              _openid: wxContext.OPENID,
-              ...buildRecordData(localRecord, true),
-              restoreBatchId,
-              replacing: true
-            }
-          })
-          stagedIds.push(createRes._id)
-          mergedRecords.push({
-            ...localRecord,
-            _id: createRes._id,
-            synced: true
-          })
-        } catch (err) {
-          console.error('替换上传单条记录失败', localRecord.id, err)
-          failed++
-          mergedRecords.push({
-            ...localRecord,
-            synced: false
-          })
-        }
-      }
-
-      if (failed > 0) {
-        for (const stagedId of stagedIds) {
-          try {
-            await records.doc(stagedId).remove()
-          } catch (err) {
-            console.error('清理失败恢复批次记录失败', stagedId, err)
-          }
-        }
-
-        if (restoreJobId) {
-          try {
-            await restoreJobs.doc(restoreJobId).update({
-              data: {
-                status: 'failed',
-                failedCount: failed,
-                failedAt: Date.now(),
-                syncTime: new Date()
-              }
-            })
-          } catch (err) {
-            console.error('更新恢复批次失败状态失败', err)
-          }
-        }
-
-        return failure('恢复数据上传不完整，已保留原云端数据', {
-          mergedRecords,
-          cloudCount: visibleCloudRecords.length,
-          localCount: localRecords.length,
-          mergedCount: mergedRecords.length,
-          failedCount: failed
-        })
-      }
-
-      let restoredRoutes = null
-      let restoredPlates = null
-      let restoredRoutesMeta = null
-      let restoredPlatesMeta = null
-
-      if (action === 'restoreAll') {
-        restoredRoutesMeta = normalizeDictionaryMeta(routesMeta, routes || [])
-        restoredPlatesMeta = normalizeDictionaryMeta(platesMeta, plates || [])
-        restoredRoutes = getVisibleNamesFromMeta(restoredRoutesMeta)
-        restoredPlates = getVisibleNamesFromMeta(restoredPlatesMeta)
-
-        const existingMeta = await userMeta
-          .where({
-            _openid: wxContext.OPENID,
-            key: 'dictionary'
-          })
-          .get()
-        const currentMeta = existingMeta.data && existingMeta.data[0]
-        const metaData = {
-          key: 'dictionary',
-          routes: restoredRoutes,
-          plates: restoredPlates,
-          routesMeta: restoredRoutesMeta,
-          platesMeta: restoredPlatesMeta,
-          updatedAt: Date.now(),
-          syncTime: new Date()
-        }
-
-        if (currentMeta) {
-          await userMeta.doc(currentMeta._id).update({ data: metaData })
-        } else {
-          await userMeta.add({
-            data: {
-              _openid: wxContext.OPENID,
-              ...metaData
-            }
-          })
-        }
-      }
-
-      for (const record of visibleCloudRecords) {
-        await records.doc(record._id).remove()
-      }
-
-      for (const stagedId of stagedIds) {
-        await records.doc(stagedId).update({
-          data: {
-            replacing: false
-          }
-        })
-      }
-
-      const merged = sortRecords(mergedRecords)
-
-      if (restoreJobId) {
-        try {
-          await restoreJobs.doc(restoreJobId).update({
-            data: {
-              status: 'completed',
-              mergedCount: merged.length,
-              completedAt: Date.now(),
-              syncTime: new Date()
-            }
-          })
-        } catch (err) {
-          console.error('更新恢复批次完成状态失败', err)
-        }
-      }
-
-      return success({
-        mergedRecords: merged,
-        cloudCount: visibleCloudRecords.length,
-        localCount: localRecords.length,
-        mergedCount: merged.length,
-        failedCount: failed,
-        routes: restoredRoutes,
-        plates: restoredPlates,
-        routesMeta: restoredRoutesMeta,
-        platesMeta: restoredPlatesMeta,
-        restoreBatchId,
-        restoreJobId
-      })
     }
 
     if (action === 'merge') {
+      const actionStartedAt = Date.now()
       if (!localRecords || !Array.isArray(localRecords)) {
         return failure('无效的本地数据')
       }
@@ -1155,7 +1006,7 @@ exports.main = async (event, context) => {
         mergedCount: merged.length,
         failedCount: failedSyncIds.length,
         failedSyncIds,
-        cursorAt: Date.now()
+        cursorAt: actionStartedAt
       })
     }
 

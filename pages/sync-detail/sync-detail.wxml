@@ -3,10 +3,10 @@
     <view class="status-top">
       <view>
         <view class="status-title">
-          {{details.authStatus === 'authorized' ? '云同步正常' : (details.authStatus === 'cloudUnavailable' ? '云同步暂不可用' : '未授权微信账号')}}
+          {{details.authStatus === 'authorized' ? '云同步正常' : (details.authStatus === 'checking' ? '正在确认云同步' : (details.authStatus === 'cloudUnavailable' ? '云同步暂不可用' : '未授权微信账号'))}}
         </view>
         <view class="status-desc">
-          {{details.authStatus === 'authorized' ? '数据会按当前微信账号同步' : (details.authStatus === 'cloudUnavailable' ? '已识别微信账号，本地数据会等待下次同步' : '授权后才能同步自己的云端数据')}}
+          {{details.authStatus === 'authorized' ? '数据会按当前微信账号同步' : (details.authStatus === 'checking' ? '已识别微信账号，正在确认云端同步状态' : (details.authStatus === 'cloudUnavailable' ? '已识别微信账号，本地数据会等待下次同步' : '授权后才能同步自己的云端数据'))}}
         </view>
       </view>
       <view class="status-dot"></view>

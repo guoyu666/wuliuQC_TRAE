@@ -10,6 +10,7 @@ let syncRecordsPromise = null
 const CLOUD_FUNCTION_NAME = config.cloud.syncFunctionName
 const CLOUD_CACHE_KEY = 'lastCloudFetchAt'
 const CLOUD_CURSOR_KEY = 'lastCloudCursorAt'
+const CLOUD_CURSOR_OVERLAP = config.cloud.cursorOverlap || 3000
 const CLOUD_REPLACE_KEY = 'pendingCloudReplace'
 const LAST_SYNC_ERROR_KEY = 'lastSyncError'
 const LAST_SYNC_META_KEY = 'lastSyncMeta'
@@ -163,7 +164,8 @@ function getLastCloudCursorAt() {
 }
 
 function setLastCloudCursorAt(timestamp) {
-  safeSetStorageSync(CLOUD_CURSOR_KEY, timestamp || 0)
+  const normalized = Math.max(0, Number(timestamp || 0) - CLOUD_CURSOR_OVERLAP)
+  safeSetStorageSync(CLOUD_CURSOR_KEY, normalized)
 }
 
 function hasPendingCloudReplace() {
@@ -724,7 +726,6 @@ async function initCloud(userInfo = {}) {
       const profile = saveUserProfile(result.result.userInfo || userInfo)
       claimLegacyDataForAccount()
       migrateStorageIfNeeded()
-      console.log('云登录成功', openid)
 
       try {
         await callSyncFunction({ action: 'protocol' })
@@ -869,7 +870,6 @@ async function getAllRecords(options = {}) {
         return getVisibleRecords(mergedRecords)
       }
     } catch (err) {
-      console.log('云端获取失败，使用本地', err)
       setLastSyncError(err.message)
     }
   }

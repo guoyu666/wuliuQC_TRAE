@@ -56,6 +56,7 @@
         <view class="sync-title">同步状态</view>
         <view class="sync-desc" wx:if="{{syncStatus.protocolError}}">云函数版本过旧，请部署最新 syncRecords 后重试</view>
         <view class="sync-desc" wx:elif="{{syncStatus.authStatus === 'unauthorized'}}">请先微信授权，数据会先保存在本地</view>
+        <view class="sync-desc" wx:elif="{{syncStatus.authStatus === 'checking'}}">正在确认微信账号和云同步状态</view>
         <view class="sync-desc" wx:elif="{{syncStatus.authStatus === 'cloudUnavailable'}}">已授权微信账号，云同步暂不可用</view>
         <view class="sync-desc" wx:elif="{{syncStatus.pendingCloudReplace}}">备份恢复待上传到云端</view>
         <view class="sync-desc" wx:else>有本地变更等待同步</view>
