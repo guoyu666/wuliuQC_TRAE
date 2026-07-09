@@ -89,8 +89,47 @@ page {
 
 .header-bar {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
   margin-bottom: 16rpx;
+}
+
+.online-pill {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  min-height: 58rpx;
+  padding: 0 20rpx;
+  border-radius: 999rpx;
+  background-color: var(--bg-card);
+  border: 1rpx solid var(--border-color);
+  box-shadow: var(--shadow-control);
+  color: var(--text-secondary);
+}
+
+.online-dot {
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+  background-color: var(--text-muted);
+}
+
+.online-pill.ready .online-dot {
+  background-color: var(--green-color);
+  box-shadow: 0 0 0 6rpx var(--success-bg);
+}
+
+.online-label,
+.online-unit {
+  font-size: 24rpx;
+}
+
+.online-count {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
 }
 
 .theme-toggle {

@@ -6,7 +6,8 @@ module.exports = {
     minClientProtocolVersion: 5,
     fetchInterval: 60 * 1000,
     restoreChunkSize: 50,
-    cursorOverlap: 3000
+    cursorOverlap: 3000,
+    presenceRefreshInterval: 30 * 1000
   },
   storage: {
     schemaVersion: 2

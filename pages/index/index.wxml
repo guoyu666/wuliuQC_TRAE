@@ -1,5 +1,11 @@
 <view class="container {{isDarkTheme ? 'dark-theme' : ''}}">
   <view class="header-bar">
+    <view class="online-pill {{onlineStatusReady ? 'ready' : ''}}">
+      <view class="online-dot"></view>
+      <text class="online-label">实时在线</text>
+      <text class="online-count">{{onlineStatusReady ? onlineCount : '--'}}</text>
+      <text class="online-unit">人</text>
+    </view>
     <view class="theme-toggle" bindtap="toggleTheme">
       <text>{{isDarkTheme ? '☀️' : '🌙'}}</text>
     </view>

@@ -674,6 +674,40 @@ async function refreshDictionariesFromCloud() {
   }
 }
 
+async function refreshOnlinePresence() {
+  if (!isLoggedIn()) {
+    return {
+      success: false,
+      onlineCount: 0,
+      message: '云同步未就绪'
+    }
+  }
+
+  try {
+    const result = await callSyncFunction({ action: 'presence' })
+    if (!result.success) {
+      return {
+        success: false,
+        onlineCount: 0,
+        message: result.message || '在线人数获取失败'
+      }
+    }
+
+    return {
+      success: true,
+      onlineCount: Number(result.onlineCount || 0),
+      activeWindowSeconds: Number(result.activeWindowSeconds || 0),
+      lastSeenAt: result.lastSeenAt || 0
+    }
+  } catch (err) {
+    return {
+      success: false,
+      onlineCount: 0,
+      message: err.message || '在线人数获取失败'
+    }
+  }
+}
+
 function migrateStorageIfNeeded() {
   const currentVersion = safeGetStorageSync(STORAGE_SCHEMA_KEY, 0)
   if (currentVersion >= STORAGE_SCHEMA_VERSION) {
@@ -1326,6 +1360,7 @@ module.exports = {
   getRecordById,
   syncRecords,
   refreshDictionariesFromCloud,
+  refreshOnlinePresence,
   getSyncStatus,
   getSyncDetails,
   cancelPendingCloudReplace,

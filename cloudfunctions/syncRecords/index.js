@@ -5,6 +5,7 @@ const PAGE_SIZE = config.pageSize
 const MIN_CLIENT_PROTOCOL_VERSION = config.minClientProtocolVersion
 const CLOUD_PROTOCOL_VERSION = config.protocolVersion
 const RESTORE_LOCK_TTL = config.restoreLockTtl || 15 * 60 * 1000
+const PRESENCE_ACTIVE_WINDOW = config.presenceActiveWindow || 90 * 1000
 
 function success(payload = {}) {
   return {
@@ -441,6 +442,18 @@ async function releaseRestoreLock(userMeta, openid, restoreBatchId, status = 're
   })
 }
 
+async function countActivePresence(userMeta, command) {
+  const cutoff = Date.now() - PRESENCE_ACTIVE_WINDOW
+  const res = await userMeta
+    .where({
+      key: 'presence',
+      lastSeenAt: command.gt(cutoff)
+    })
+    .count()
+
+  return res.total || 0
+}
+
 async function revealStagedRecords(recordsCollection, stagedRecords) {
   const revealedIds = []
 
@@ -492,6 +505,20 @@ exports.main = async (event, context) => {
         expectedProtocolVersion: CLOUD_PROTOCOL_VERSION,
         minClientProtocolVersion: MIN_CLIENT_PROTOCOL_VERSION,
         receivedProtocolVersion: protocolVersion || 0
+      })
+    }
+
+    if (action === 'presence') {
+      const now = Date.now()
+      await upsertUserMetaItem(userMeta, wxContext.OPENID, 'presence', {
+        lastSeenAt: now
+      })
+
+      const onlineCount = await countActivePresence(userMeta, _)
+      return success({
+        onlineCount,
+        activeWindowSeconds: Math.round(PRESENCE_ACTIVE_WINDOW / 1000),
+        lastSeenAt: now
       })
     }
 

@@ -4,6 +4,7 @@ const feedback = require('../../utils/feedback.js')
 const theme = require('../../utils/theme.js')
 const recordUtils = require('../../utils/records.js')
 const requestGate = require('../../utils/requestGate.js')
+const config = require('../../utils/config.js')
 
 Page({
   data: {
@@ -39,7 +40,10 @@ Page({
     showBlueSection: true,
     showRedSection: true,
     routeSummaryList: [],
-    isDarkTheme: false
+    isDarkTheme: false,
+    onlineCount: 0,
+    onlineActiveWindowSeconds: 0,
+    onlineStatusReady: false
   },
 
   onLoad() {
@@ -63,6 +67,7 @@ Page({
       plateList: db.getPlates()
     }, () => {
       this.setupSyncRefresh()
+      this.startOnlinePresenceRefresh()
       this.loadData()
     })
   },
@@ -74,6 +79,7 @@ Page({
     }
 
     this.refreshPickerOptions()
+    this.startOnlinePresenceRefresh()
     if (this.skipNextShowReload) {
       this.skipNextShowReload = false
       return
@@ -82,8 +88,13 @@ Page({
     this.loadData()
   },
 
+  onHide() {
+    this.stopOnlinePresenceRefresh()
+  },
+
   onUnload() {
     this.clearDateSwitchTimer()
+    this.stopOnlinePresenceRefresh()
     if (this.unsubscribeSyncReady) {
       this.unsubscribeSyncReady()
       this.unsubscribeSyncReady = null
@@ -96,7 +107,37 @@ Page({
 
     this.unsubscribeSyncReady = app.onSyncReady(() => {
       this.refreshPickerOptions()
+      this.refreshOnlinePresence()
       this.loadData()
+    })
+  },
+
+  startOnlinePresenceRefresh() {
+    if (this.onlinePresenceTimer) {
+      return
+    }
+
+    this.refreshOnlinePresence()
+    this.onlinePresenceTimer = setInterval(() => {
+      this.refreshOnlinePresence()
+    }, config.cloud.presenceRefreshInterval || 30 * 1000)
+  },
+
+  stopOnlinePresenceRefresh() {
+    if (this.onlinePresenceTimer) {
+      clearInterval(this.onlinePresenceTimer)
+      this.onlinePresenceTimer = null
+    }
+  },
+
+  refreshOnlinePresence() {
+    return db.refreshOnlinePresence().then(result => {
+      if (!result.success) return
+      this.setData({
+        onlineCount: result.onlineCount,
+        onlineActiveWindowSeconds: result.activeWindowSeconds,
+        onlineStatusReady: true
+      })
     })
   },
 
