@@ -54,6 +54,12 @@
       <view class="detail-value">{{details.lastSyncAction || '暂无'}}</view>
     </view>
     <view class="detail-row">
+      <view class="detail-label">最近状态</view>
+      <view class="detail-value {{details.lastSyncStatus === 'partial' || details.lastSyncStatus === 'failed' ? 'error' : ''}}">
+        {{details.lastSyncStatus === 'partial' ? '部分同步完成' : (details.lastSyncStatus === 'failed' ? '同步失败' : (details.lastSyncStatus === 'success' ? '同步成功' : '暂无'))}}
+      </view>
+    </view>
+    <view class="detail-row">
       <view class="detail-label">上次合并</view>
       <view class="detail-value">本地 {{details.lastLocalCount}} / 云端 {{details.lastCloudCount}} / 合并 {{details.lastMergedCount}}</view>
     </view>

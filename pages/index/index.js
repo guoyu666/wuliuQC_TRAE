@@ -4,7 +4,6 @@ const feedback = require('../../utils/feedback.js')
 const theme = require('../../utils/theme.js')
 const recordUtils = require('../../utils/records.js')
 const requestGate = require('../../utils/requestGate.js')
-const config = require('../../utils/config.js')
 
 Page({
   data: {
@@ -67,7 +66,8 @@ Page({
       plateList: db.getPlates()
     }, () => {
       this.setupSyncRefresh()
-      this.startOnlinePresenceRefresh()
+      this.setupPresenceRefresh()
+      this.refreshOnlinePresence()
       this.loadData()
     })
   },
@@ -79,7 +79,7 @@ Page({
     }
 
     this.refreshPickerOptions()
-    this.startOnlinePresenceRefresh()
+    this.refreshOnlinePresence()
     if (this.skipNextShowReload) {
       this.skipNextShowReload = false
       return
@@ -88,16 +88,15 @@ Page({
     this.loadData()
   },
 
-  onHide() {
-    this.stopOnlinePresenceRefresh()
-  },
-
   onUnload() {
     this.clearDateSwitchTimer()
-    this.stopOnlinePresenceRefresh()
     if (this.unsubscribeSyncReady) {
       this.unsubscribeSyncReady()
       this.unsubscribeSyncReady = null
+    }
+    if (this.unsubscribePresence) {
+      this.unsubscribePresence()
+      this.unsubscribePresence = null
     }
   },
 
@@ -112,33 +111,30 @@ Page({
     })
   },
 
-  startOnlinePresenceRefresh() {
-    if (this.onlinePresenceTimer) {
-      return
-    }
-
-    this.refreshOnlinePresence()
-    this.onlinePresenceTimer = setInterval(() => {
-      this.refreshOnlinePresence()
-    }, config.cloud.presenceRefreshInterval || 30 * 1000)
-  },
-
-  stopOnlinePresenceRefresh() {
-    if (this.onlinePresenceTimer) {
-      clearInterval(this.onlinePresenceTimer)
-      this.onlinePresenceTimer = null
-    }
+  setupPresenceRefresh() {
+    const app = getApp()
+    if (!app || !app.onPresenceUpdate || this.unsubscribePresence) return
+    this.unsubscribePresence = app.onPresenceUpdate(result => {
+      this.applyOnlinePresence(result)
+    })
   },
 
   refreshOnlinePresence() {
-    return db.refreshOnlinePresence().then(result => {
-      if (!result.success) return
-      this.setData({
-        onlineCount: result.onlineCount,
-        onlineActiveWindowSeconds: result.activeWindowSeconds,
-        onlineStatusReady: true
-      })
+    const app = getApp()
+    const request = app && app.refreshPresence
+      ? app.refreshPresence()
+      : db.refreshOnlinePresence()
+    return request.then(result => this.applyOnlinePresence(result))
+  },
+
+  applyOnlinePresence(result) {
+    if (!result || !result.success) return result
+    this.setData({
+      onlineCount: result.onlineCount,
+      onlineActiveWindowSeconds: result.activeWindowSeconds,
+      onlineStatusReady: true
     })
+    return result
   },
 
   refreshPickerOptions() {

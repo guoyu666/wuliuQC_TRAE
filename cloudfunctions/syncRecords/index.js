@@ -6,6 +6,7 @@ const MIN_CLIENT_PROTOCOL_VERSION = config.minClientProtocolVersion
 const CLOUD_PROTOCOL_VERSION = config.protocolVersion
 const RESTORE_LOCK_TTL = config.restoreLockTtl || 15 * 60 * 1000
 const PRESENCE_ACTIVE_WINDOW = config.presenceActiveWindow || 90 * 1000
+const LEGACY_GENERATION = 'legacy'
 
 function success(payload = {}) {
   return {
@@ -57,6 +58,29 @@ function getRecordVersion(record) {
   )
 }
 
+function getServerRevision(record) {
+  const revision = Number(record && record.serverRevision || 0)
+  return Number.isFinite(revision) && revision > 0 ? revision : 0
+}
+
+function compareRecordVersions(left, right) {
+  const leftRevision = getServerRevision(left)
+  const rightRevision = getServerRevision(right)
+  if (leftRevision || rightRevision) {
+    return leftRevision - rightRevision
+  }
+  return getRecordVersion(left) - getRecordVersion(right)
+}
+
+function canApplyIncomingRecord(incoming, current) {
+  const incomingRevision = getServerRevision(incoming)
+  const currentRevision = getServerRevision(current)
+  if (incomingRevision || currentRevision) {
+    return incomingRevision >= currentRevision
+  }
+  return getRecordVersion(incoming) >= getRecordVersion(current)
+}
+
 function sortRecords(records) {
   return records.sort((a, b) => getRecordVersion(b) - getRecordVersion(a))
 }
@@ -66,7 +90,7 @@ function dedupeRecordsById(records = []) {
   records.forEach((record, index) => {
     const key = record.id || record._id || `record-${index}`
     const current = recordMap.get(key)
-    if (!current || getRecordVersion(record) >= getRecordVersion(current)) {
+    if (!current || compareRecordVersions(record, current) >= 0) {
       recordMap.set(key, record)
     }
   })
@@ -169,7 +193,9 @@ function buildRecordData(record, includeCreateTime = false) {
     'redIn',
     'remark',
     'updatedAt',
-    'deletedAt'
+    'deletedAt',
+    'serverRevision',
+    'generation'
   ]
 
   fields.forEach(field => {
@@ -193,7 +219,11 @@ function buildRecordData(record, includeCreateTime = false) {
 }
 
 async function fetchAllRecords(recordsCollection, openid, options = {}) {
-  const { includeStaged = false, command = cloud.database().command } = options
+  const {
+    includeStaged = false,
+    command = cloud.database().command,
+    activeGeneration = LEGACY_GENERATION
+  } = options
   const allRecords = []
   let lastId = ''
 
@@ -225,7 +255,10 @@ async function fetchAllRecords(recordsCollection, openid, options = {}) {
     return allRecords
   }
 
-  return dedupeRecordsById(allRecords.filter(record => !record.replacing))
+  return dedupeRecordsById(allRecords.filter(record => {
+    const generation = record.generation || LEGACY_GENERATION
+    return generation === activeGeneration && !(generation === LEGACY_GENERATION && record.replacing)
+  }))
 }
 
 async function fetchRestoreRecords(recordsCollection, openid, restoreBatchId, options = {}) {
@@ -264,10 +297,10 @@ async function fetchRestoreRecords(recordsCollection, openid, restoreBatchId, op
   return allRecords
 }
 
-async function fetchChangedRecords(recordsCollection, openid, since, command) {
+async function fetchChangedRecords(recordsCollection, openid, since, command, activeGeneration = LEGACY_GENERATION) {
   const sinceTime = Number(since || 0)
   if (!sinceTime || Number.isNaN(sinceTime)) {
-    return fetchAllRecords(recordsCollection, openid, { command })
+    return fetchAllRecords(recordsCollection, openid, { command, activeGeneration })
   }
 
   const allRecords = []
@@ -276,7 +309,6 @@ async function fetchChangedRecords(recordsCollection, openid, since, command) {
   while (true) {
     const where = {
       _openid: openid,
-      replacing: command.neq(true),
       syncTime: command.gt(new Date(sinceTime))
     }
     if (lastId) {
@@ -301,7 +333,9 @@ async function fetchChangedRecords(recordsCollection, openid, since, command) {
     }
   }
 
-  return dedupeRecordsById(allRecords)
+  return dedupeRecordsById(allRecords.filter(record => {
+    return (record.generation || LEGACY_GENERATION) === activeGeneration
+  }))
 }
 
 async function updateRestoreJob(restoreJobs, restoreJobId, data) {
@@ -393,8 +427,335 @@ async function upsertUserMetaItem(userMeta, openid, key, data) {
   return res._id
 }
 
+function hashAccountId(value) {
+  let first = 2166136261
+  let second = 5381
+  const input = String(value || '')
+  for (let index = 0; index < input.length; index++) {
+    const code = input.charCodeAt(index)
+    first = Math.imul(first ^ code, 16777619) >>> 0
+    second = Math.imul(second, 33) ^ code
+  }
+  return `${first.toString(16).padStart(8, '0')}${(second >>> 0).toString(16).padStart(8, '0')}`
+}
+
+async function reserveServerRevisions(db, openid, count) {
+  const size = Math.max(0, Number(count || 0))
+  if (!size) {
+    return function noRevision() { return 0 }
+  }
+
+  const counterId = `revision_${hashAccountId(openid)}`
+  const reservation = await db.runTransaction(async transaction => {
+    const counter = transaction.collection('userMeta').doc(counterId)
+    let currentValue = 0
+    let exists = false
+
+    try {
+      const current = await counter.get()
+      if (current && current.data) {
+        exists = true
+        currentValue = Number(current.data.value || 0)
+      }
+    } catch (err) {
+      exists = false
+    }
+
+    const nextValue = currentValue + size
+    const data = {
+      _openid: openid,
+      key: 'revisionCounter',
+      value: nextValue,
+      updatedAt: Date.now(),
+      syncTime: new Date()
+    }
+
+    if (exists) {
+      await counter.update({ data })
+    } else {
+      await counter.set({ data })
+    }
+
+    return {
+      start: currentValue + 1,
+      end: nextValue
+    }
+  })
+
+  let nextRevision = reservation.start
+  return function takeRevision() {
+    if (nextRevision > reservation.end) {
+      throw new Error('服务端修订号分配不足')
+    }
+    return nextRevision++
+  }
+}
+
+function getRecordDocumentId(openid, recordId) {
+  return `record_${hashAccountId(`${openid}:${recordId}`)}`
+}
+
+async function commitRecordMutation(db, openid, incomingRecord, activeGeneration, documentId) {
+  const recordId = incomingRecord && incomingRecord.id
+  if (!recordId) {
+    throw new Error('无效的记录数据')
+  }
+
+  const targetId = documentId || getRecordDocumentId(openid, recordId)
+  const counterId = `revision_${hashAccountId(openid)}`
+  return db.runTransaction(async transaction => {
+    const recordRef = transaction.collection('records').doc(targetId)
+    const counterRef = transaction.collection('userMeta').doc(counterId)
+    let currentRecord = null
+    let currentCounter = null
+
+    try {
+      const result = await recordRef.get()
+      currentRecord = result && result.data
+    } catch (err) {
+      currentRecord = null
+    }
+
+    const currentGeneration = currentRecord && (currentRecord.generation || LEGACY_GENERATION)
+    const isCurrentGeneration = currentRecord && currentGeneration === activeGeneration
+    if (isCurrentGeneration && currentRecord.id && currentRecord.id !== recordId) {
+      throw new Error('记录主键冲突，请重试同步')
+    }
+    if (isCurrentGeneration && !canApplyIncomingRecord(incomingRecord, currentRecord)) {
+      return {
+        skipped: true,
+        record: {
+          ...currentRecord,
+          id: currentRecord.id || recordId,
+          synced: true
+        }
+      }
+    }
+
+    try {
+      const result = await counterRef.get()
+      currentCounter = result && result.data
+    } catch (err) {
+      currentCounter = null
+    }
+
+    const serverRevision = Math.max(0, Number(currentCounter && currentCounter.value || 0)) + 1
+    const counterData = {
+      _openid: openid,
+      key: 'revisionCounter',
+      value: serverRevision,
+      updatedAt: Date.now(),
+      syncTime: new Date()
+    }
+    if (currentCounter) {
+      await counterRef.update({ data: counterData })
+    } else {
+      await counterRef.set({ data: counterData })
+    }
+
+    const nextRecord = {
+      ...(isCurrentGeneration ? currentRecord : {}),
+      ...incomingRecord,
+      id: recordId,
+      generation: activeGeneration,
+      serverRevision
+    }
+    const recordData = buildRecordData(nextRecord, !isCurrentGeneration)
+    if (isCurrentGeneration) {
+      await recordRef.update({ data: recordData })
+    } else {
+      await recordRef.set({
+        data: {
+          _openid: openid,
+          ...recordData
+        }
+      })
+    }
+
+    return {
+      skipped: false,
+      record: {
+        ...nextRecord,
+        _id: targetId,
+        synced: true
+      }
+    }
+  })
+}
+
+async function commitPendingMutation(db, openid, incomingRecord, activeGeneration, documentId) {
+  let mutation = await commitRecordMutation(db, openid, incomingRecord, activeGeneration, documentId)
+  if (mutation.skipped && mutation.record) {
+    mutation = await commitRecordMutation(db, openid, {
+      ...incomingRecord,
+      serverRevision: getServerRevision(mutation.record)
+    }, activeGeneration, mutation.record._id || documentId)
+  }
+  return mutation
+}
+
+async function ensureActiveGeneration(userMeta, openid) {
+  const generationId = `active_generation_${hashAccountId(openid)}`
+  let current = null
+  try {
+    const result = await userMeta.doc(generationId).get()
+    current = result && result.data
+  } catch (err) {
+    current = await getUserMetaItem(userMeta, openid, 'activeGeneration')
+  }
+  if (current && current.activeGeneration) {
+    if (current._id !== generationId) {
+      const { _id: ignoredId, ...currentData } = current
+      await userMeta.doc(generationId).set({ data: {
+        _openid: openid,
+        ...currentData,
+        key: 'activeGeneration'
+      } })
+    }
+    return current.activeGeneration
+  }
+
+  await userMeta.doc(generationId).set({ data: {
+    _openid: openid,
+    key: 'activeGeneration',
+    activeGeneration: LEGACY_GENERATION,
+    activatedAt: Date.now(),
+    updatedAt: Date.now(),
+    syncTime: new Date()
+  } })
+  return LEGACY_GENERATION
+}
+
+async function commitActiveGeneration(db, openid, generation, previousGeneration) {
+  const generationId = `active_generation_${hashAccountId(openid)}`
+  const lockId = `restore_lock_${hashAccountId(openid)}`
+  return db.runTransaction(async transaction => {
+    const generationRef = transaction.collection('userMeta').doc(generationId)
+    const lockRef = transaction.collection('userMeta').doc(lockId)
+    let lock = null
+    try {
+      const result = await lockRef.get()
+      lock = result && result.data
+    } catch (err) {
+      lock = null
+    }
+    if (!lock || lock.status !== 'active' || lock.restoreBatchId !== generation) {
+      throw new Error('恢复任务锁已失效，未切换云端数据')
+    }
+
+    const now = Date.now()
+    await generationRef.set({ data: {
+      _openid: openid,
+      key: 'activeGeneration',
+      activeGeneration: generation,
+      previousGeneration: previousGeneration || '',
+      activatedAt: now,
+      updatedAt: now,
+      syncTime: new Date()
+    } })
+    await lockRef.set({ data: {
+      _openid: openid,
+      key: 'restoreLock',
+      ...lock,
+      status: 'completed',
+      releasedAt: now,
+      updatedAt: now,
+      syncTime: new Date()
+    } })
+  })
+}
+
+async function fetchHistoryPage(recordsCollection, openid, activeGeneration, cursor, limit, command) {
+  const pageLimit = Math.min(Math.max(Number(limit || 20), 1), 100)
+  const collected = []
+  let currentDate = cursor && typeof cursor === 'object' ? String(cursor.date || '') : ''
+  let currentId = cursor && typeof cursor === 'object' ? String(cursor.id || '') : ''
+
+  const withGeneration = where => {
+    if (activeGeneration !== LEGACY_GENERATION) {
+      where.generation = activeGeneration
+    }
+    return where
+  }
+
+  const findNextDate = async beforeDate => {
+    let boundary = beforeDate
+    while (true) {
+      const where = withGeneration({ _openid: openid })
+      if (boundary) {
+        where.date = command.lt(boundary)
+      }
+      const res = await recordsCollection
+        .where(where)
+        .orderBy('date', 'desc')
+        .limit(PAGE_SIZE)
+        .get()
+      const batch = res.data || []
+      const candidate = batch.find(item => {
+        const generation = item.generation || LEGACY_GENERATION
+        return generation === activeGeneration && typeof item.date === 'string' && item.date
+      })
+      if (candidate) return candidate.date
+      if (batch.length < PAGE_SIZE) return ''
+      const lastDate = batch[batch.length - 1] && batch[batch.length - 1].date
+      if (!lastDate || lastDate === boundary) return ''
+      boundary = lastDate
+    }
+  }
+
+  if (!currentDate) {
+    currentDate = await findNextDate('')
+  }
+
+  while (collected.length <= pageLimit && currentDate) {
+    const where = withGeneration({
+      _openid: openid,
+      date: currentDate
+    })
+    if (currentId) where._id = command.lt(currentId)
+    const res = await recordsCollection
+      .where(where)
+      .orderBy('_id', 'desc')
+      .limit(PAGE_SIZE)
+      .get()
+    const batch = res.data || []
+
+    for (const item of batch) {
+      currentId = item._id || currentId
+      const generation = item.generation || LEGACY_GENERATION
+      if (generation !== activeGeneration || item.deletedAt) continue
+      collected.push(item)
+      if (collected.length > pageLimit) break
+    }
+
+    if (collected.length > pageLimit) break
+    if (batch.length < PAGE_SIZE) {
+      currentDate = await findNextDate(currentDate)
+      currentId = ''
+    }
+  }
+
+  const hasMore = collected.length > pageLimit || !!currentDate
+  const pageRecords = collected.slice(0, pageLimit)
+  const lastRecord = pageRecords[pageRecords.length - 1]
+  return {
+    records: pageRecords,
+    hasMore,
+    nextCursor: hasMore && lastRecord
+      ? { date: lastRecord.date || '', id: lastRecord._id || '' }
+      : null
+  }
+}
+
 async function getActiveRestoreLock(userMeta, openid) {
-  const lock = await getUserMetaItem(userMeta, openid, 'restoreLock')
+  const lockId = `restore_lock_${hashAccountId(openid)}`
+  let lock = null
+  try {
+    const result = await userMeta.doc(lockId).get()
+    lock = result && result.data
+  } catch (err) {
+    lock = await getUserMetaItem(userMeta, openid, 'restoreLock')
+  }
   if (!lock || !lock.restoreBatchId || lock.status !== 'active') {
     return null
   }
@@ -404,42 +765,100 @@ async function getActiveRestoreLock(userMeta, openid) {
     return lock
   }
 
-  await upsertUserMetaItem(userMeta, openid, 'restoreLock', {
+  await userMeta.doc(lockId).set({ data: {
+    _openid: openid,
+    key: 'restoreLock',
     ...lock,
     status: 'expired',
-    expiredAt: Date.now()
-  })
+    expiredAt: Date.now(),
+    updatedAt: Date.now(),
+    syncTime: new Date()
+  } })
   return null
 }
 
-async function acquireRestoreLock(userMeta, openid, restoreBatchId) {
-  const activeLock = await getActiveRestoreLock(userMeta, openid)
-  if (activeLock) {
-    return {
-      success: false,
-      lock: activeLock
+async function acquireRestoreLock(db, openid, restoreBatchId, expectedCount) {
+  const lockId = `restore_lock_${hashAccountId(openid)}`
+  return db.runTransaction(async transaction => {
+    const lockRef = transaction.collection('userMeta').doc(lockId)
+    let lock = null
+    try {
+      const result = await lockRef.get()
+      lock = result && result.data
+    } catch (err) {
+      lock = null
     }
-  }
 
-  await upsertUserMetaItem(userMeta, openid, 'restoreLock', {
-    status: 'active',
-    restoreBatchId,
-    lockedAt: Date.now()
+    const lockedAt = Number(lock && lock.lockedAt || 0)
+    const isActive = lock && lock.status === 'active' && lockedAt && Date.now() - lockedAt < RESTORE_LOCK_TTL
+    if (isActive) {
+      return { success: false, lock }
+    }
+
+    await lockRef.set({ data: {
+      _openid: openid,
+      key: 'restoreLock',
+      status: 'active',
+      restoreBatchId,
+      expectedCount: Math.max(0, Number(expectedCount || 0)),
+      lockedAt: Date.now(),
+      updatedAt: Date.now(),
+      syncTime: new Date()
+    } })
+    return { success: true }
   })
-  return { success: true }
+}
+
+async function touchRestoreLock(db, openid, restoreBatchId) {
+  const lockId = `restore_lock_${hashAccountId(openid)}`
+  return db.runTransaction(async transaction => {
+    const lockRef = transaction.collection('userMeta').doc(lockId)
+    let lock = null
+    try {
+      const result = await lockRef.get()
+      lock = result && result.data
+    } catch (err) {
+      lock = null
+    }
+    if (!lock || lock.status !== 'active' || lock.restoreBatchId !== restoreBatchId) {
+      return { success: false, lock }
+    }
+
+    const now = Date.now()
+    await lockRef.set({ data: {
+      _openid: openid,
+      key: 'restoreLock',
+      ...lock,
+      lockedAt: now,
+      updatedAt: now,
+      syncTime: new Date()
+    } })
+    return { success: true, lock: { ...lock, lockedAt: now } }
+  })
 }
 
 async function releaseRestoreLock(userMeta, openid, restoreBatchId, status = 'released') {
-  const lock = await getUserMetaItem(userMeta, openid, 'restoreLock')
+  const lockId = `restore_lock_${hashAccountId(openid)}`
+  let lock = null
+  try {
+    const result = await userMeta.doc(lockId).get()
+    lock = result && result.data
+  } catch (err) {
+    lock = null
+  }
   if (!lock || lock.restoreBatchId !== restoreBatchId) {
     return
   }
 
-  await upsertUserMetaItem(userMeta, openid, 'restoreLock', {
+  await userMeta.doc(lockId).set({ data: {
+    _openid: openid,
+    key: 'restoreLock',
     ...lock,
     status,
-    releasedAt: Date.now()
-  })
+    releasedAt: Date.now(),
+    updatedAt: Date.now(),
+    syncTime: new Date()
+  } })
 }
 
 async function countActivePresence(userMeta, command) {
@@ -452,34 +871,6 @@ async function countActivePresence(userMeta, command) {
     .count()
 
   return res.total || 0
-}
-
-async function revealStagedRecords(recordsCollection, stagedRecords) {
-  const revealedIds = []
-
-  try {
-    for (const item of stagedRecords) {
-      await recordsCollection.doc(item._id).update({
-        data: {
-          replacing: false
-        }
-      })
-      revealedIds.push(item._id)
-    }
-  } catch (err) {
-    for (const revealedId of revealedIds) {
-      try {
-        await recordsCollection.doc(revealedId).update({
-          data: {
-            replacing: true
-          }
-        })
-      } catch (rollbackErr) {
-        console.error('回滚恢复批次记录失败', revealedId, rollbackErr)
-      }
-    }
-    throw err
-  }
 }
 
 exports.main = async (event, context) => {
@@ -508,11 +899,27 @@ exports.main = async (event, context) => {
       })
     }
 
+    const activeGeneration = await ensureActiveGeneration(userMeta, wxContext.OPENID)
+
     if (action === 'presence') {
       const now = Date.now()
-      await upsertUserMetaItem(userMeta, wxContext.OPENID, 'presence', {
-        lastSeenAt: now
-      })
+      const presenceId = `presence_${hashAccountId(wxContext.OPENID)}`
+      await userMeta.doc(presenceId).set({ data: {
+        _openid: wxContext.OPENID,
+        key: 'presence',
+        lastSeenAt: now,
+        updatedAt: now,
+        syncTime: new Date()
+      } })
+      const duplicatePresence = await userMeta.where({
+        _openid: wxContext.OPENID,
+        key: 'presence'
+      }).get()
+      for (const item of duplicatePresence.data || []) {
+        if (item._id !== presenceId) {
+          await userMeta.doc(item._id).remove()
+        }
+      }
 
       const onlineCount = await countActivePresence(userMeta, _)
       return success({
@@ -582,50 +989,22 @@ exports.main = async (event, context) => {
           id: record.id
         })
         .get()
-
-      if (existing.data && existing.data.length > 0) {
-        const target = existing.data[0]
-        const incomingVersion = getRecordVersion(record)
-        const cloudVersion = getRecordVersion(target)
-
-        if (incomingVersion < cloudVersion) {
-          return success({
-            record: {
-              ...target,
-              id: target.id || record.id,
-              synced: true
-            },
-            skipped: true,
-            reason: '云端记录更新，已保留云端版本'
-          })
-        }
-
-        await records.doc(target._id).update({
-          data: buildRecordData(record)
-        })
-        return success({
-          record: {
-            ...target,
-            ...record,
-            _id: target._id,
-            synced: true
-          }
-        })
-      }
-
-      const createRes = await records.add({
-        data: {
-          _openid: wxContext.OPENID,
-          ...buildRecordData(record, true)
-        }
+      const activeExisting = (existing.data || []).filter(item => {
+        return (item.generation || LEGACY_GENERATION) === activeGeneration
       })
-
+      const target = activeExisting.length > 0
+        ? activeExisting.sort((left, right) => compareRecordVersions(right, left))[0]
+        : null
+      const mutation = await commitRecordMutation(
+        db,
+        wxContext.OPENID,
+        record,
+        activeGeneration,
+        target && target._id
+      )
       return success({
-        record: {
-          ...record,
-          _id: createRes._id,
-          synced: true
-        }
+        ...mutation,
+        reason: mutation.skipped ? '云端记录更新，已保留云端版本' : ''
       })
     }
 
@@ -640,30 +1019,28 @@ exports.main = async (event, context) => {
           id
         })
         .get()
+      const activeExisting = (existing.data || []).filter(item => {
+        return (item.generation || LEGACY_GENERATION) === activeGeneration
+      })
 
       let deleted = 0
       let skipped = 0
       let latestRecord = null
-      const incomingVersion = getRecordVersion(record || {})
 
-      for (const item of existing.data || []) {
-        const cloudVersion = getRecordVersion(item)
-        if (incomingVersion && incomingVersion < cloudVersion) {
+      for (const item of activeExisting) {
+        const mutation = await commitRecordMutation(db, wxContext.OPENID, {
+          ...item,
+          ...(record || {}),
+          id,
+          deletedAt: (record && record.deletedAt) || Date.now()
+        }, activeGeneration, item._id)
+        if (mutation.skipped) {
           skipped++
-          if (!latestRecord || cloudVersion > getRecordVersion(latestRecord)) {
-            latestRecord = item
+          if (!latestRecord || compareRecordVersions(mutation.record, latestRecord) > 0) {
+            latestRecord = mutation.record
           }
           continue
         }
-
-        await records.doc(item._id).update({
-          data: buildRecordData({
-            ...item,
-            ...(record || {}),
-            id,
-            deletedAt: (record && record.deletedAt) || Date.now()
-          })
-        })
         deleted++
       }
 
@@ -678,33 +1055,141 @@ exports.main = async (event, context) => {
       })
     }
 
+    if (action === 'syncPending') {
+      if (!Array.isArray(localRecords)) {
+        return failure('无效的待同步数据')
+      }
+
+      const syncedRecords = []
+      const failedSyncIds = []
+      for (const localRecord of localRecords) {
+        const recordId = localRecord && localRecord.id
+        if (!recordId || localRecord.synced !== false) continue
+
+        try {
+          const existing = await records.where({
+            _openid: wxContext.OPENID,
+            id: recordId
+          }).get()
+          const activeExisting = (existing.data || []).filter(item => {
+            return (item.generation || LEGACY_GENERATION) === activeGeneration
+          }).sort((left, right) => compareRecordVersions(right, left))
+
+          if (localRecord.deletedAt && activeExisting.length === 0) {
+            syncedRecords.push({
+              ...localRecord,
+              generation: activeGeneration,
+              synced: true
+            })
+            continue
+          }
+
+          const targets = localRecord.deletedAt ? activeExisting : [activeExisting[0] || null]
+          let latestMutation = null
+          for (const target of targets) {
+            const mutation = await commitPendingMutation(
+              db,
+              wxContext.OPENID,
+              localRecord,
+              activeGeneration,
+              target && target._id
+            )
+            if (!latestMutation || compareRecordVersions(mutation.record, latestMutation.record) > 0) {
+              latestMutation = mutation
+            }
+          }
+          if (latestMutation && latestMutation.record) {
+            syncedRecords.push(latestMutation.record)
+          }
+        } catch (err) {
+          console.error('待同步记录上传失败', recordId, err)
+          failedSyncIds.push(recordId)
+        }
+      }
+
+      return success({
+        records: syncedRecords,
+        syncedCount: syncedRecords.length,
+        failedCount: failedSyncIds.length,
+        failedSyncIds,
+        activeGeneration
+      })
+    }
+
     if (action === 'download') {
       const queryStartedAt = Date.now()
-      const data = sortRecords(await fetchAllRecords(records, wxContext.OPENID))
+      const data = sortRecords(await fetchAllRecords(records, wxContext.OPENID, {
+        activeGeneration,
+        command: _
+      }))
 
       return success({
         records: data,
         count: data.length,
-        cursorAt: queryStartedAt
+        cursorAt: queryStartedAt,
+        activeGeneration
       })
     }
 
     if (action === 'downloadChanges') {
       const queryStartedAt = Date.now()
-      const data = sortRecords(await fetchChangedRecords(records, wxContext.OPENID, since, _))
+      const data = sortRecords(await fetchChangedRecords(records, wxContext.OPENID, since, _, activeGeneration))
 
       return success({
         records: data,
         count: data.length,
         since: Number(since || 0),
-        cursorAt: queryStartedAt
+        cursorAt: queryStartedAt,
+        activeGeneration
+      })
+    }
+
+    if (action === 'historyPage') {
+      const page = await fetchHistoryPage(
+        records,
+        wxContext.OPENID,
+        activeGeneration,
+        event.cursor,
+        event.pageSize,
+        _
+      )
+      return success({
+        ...page,
+        activeGeneration
+      })
+    }
+
+    if (action === 'restoreStatus') {
+      const restoreBatchId = String(event.restoreBatchId || '')
+      if (!restoreBatchId) {
+        return failure('无效的恢复批次')
+      }
+
+      if (activeGeneration === restoreBatchId) {
+        return success({
+          status: 'committed',
+          restoreBatchId,
+          activeGeneration
+        })
+      }
+
+      const activeLock = await getActiveRestoreLock(userMeta, wxContext.OPENID)
+      const stagedRecords = await fetchRestoreRecords(records, wxContext.OPENID, restoreBatchId)
+      const isActive = activeLock && activeLock.restoreBatchId === restoreBatchId
+      return success({
+        status: isActive ? 'active' : 'expired',
+        restoreBatchId,
+        expectedCount: isActive ? Number(activeLock.expectedCount || 0) : 0,
+        stagedCount: stagedRecords.length,
+        lockedAt: isActive ? Number(activeLock.lockedAt || 0) : 0,
+        activeGeneration
       })
     }
 
     if (action === 'restoreStart') {
       const restoreBatchId = `restore_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
       let restoreJobId = ''
-      const lockResult = await acquireRestoreLock(userMeta, wxContext.OPENID, restoreBatchId)
+      const lockResult = await acquireRestoreLock(db, wxContext.OPENID, restoreBatchId, event.localCount)
       if (!lockResult.success) {
         return failure('已有恢复任务正在上传，请稍后再试或先取消恢复', {
           code: 'RESTORE_LOCKED',
@@ -714,9 +1199,17 @@ exports.main = async (event, context) => {
       }
 
       try {
-        const allCloudRecords = await fetchAllRecords(records, wxContext.OPENID, { includeStaged: true })
-        const visibleCloudRecords = allCloudRecords.filter(item => !item.replacing)
-        const staleStagedRecords = allCloudRecords.filter(item => item.replacing)
+        const allCloudRecords = await fetchAllRecords(records, wxContext.OPENID, {
+          includeStaged: true,
+          command: _
+        })
+        const visibleCloudRecords = allCloudRecords.filter(item => {
+          return (item.generation || LEGACY_GENERATION) === activeGeneration
+        })
+        const staleStagedRecords = allCloudRecords.filter(item => {
+          const generation = item.generation || LEGACY_GENERATION
+          return item.replacing && generation !== activeGeneration
+        })
 
         for (const item of staleStagedRecords) {
           await records.doc(item._id).remove()
@@ -727,6 +1220,7 @@ exports.main = async (event, context) => {
             data: {
               _openid: wxContext.OPENID,
               restoreBatchId,
+              previousGeneration: activeGeneration,
               status: 'staging',
               localCount: Number(event.localCount || 0),
               cloudCount: visibleCloudRecords.length,
@@ -744,6 +1238,7 @@ exports.main = async (event, context) => {
         return success({
           restoreBatchId,
           restoreJobId,
+          previousGeneration: activeGeneration,
           cloudCount: visibleCloudRecords.length
         })
       } catch (err) {
@@ -763,9 +1258,25 @@ exports.main = async (event, context) => {
           code: 'RESTORE_LOCK_INVALID'
         })
       }
+      const touchedLock = await touchRestoreLock(db, wxContext.OPENID, restoreBatchId)
+      if (!touchedLock.success) {
+        return failure('恢复任务锁已失效，请重新开始恢复', {
+          code: 'RESTORE_LOCK_INVALID'
+        })
+      }
 
       const uploadedRecords = []
       let failed = 0
+      const validRecords = localRecords.filter(localRecord => localRecord.id && !localRecord.deletedAt)
+      const takeRevision = await reserveServerRevisions(db, wxContext.OPENID, validRecords.length)
+      const stagedRecords = await fetchRestoreRecords(records, wxContext.OPENID, restoreBatchId)
+      const stagedByRecordId = new Map()
+      stagedRecords.forEach(record => {
+        if (!record.id) return
+        const existing = stagedByRecordId.get(record.id) || []
+        existing.push(record)
+        stagedByRecordId.set(record.id, existing)
+      })
 
       for (const localRecord of localRecords) {
         if (!localRecord.id || localRecord.deletedAt) {
@@ -773,17 +1284,31 @@ exports.main = async (event, context) => {
         }
 
         try {
-          const createRes = await records.add({
+          const serverRevision = takeRevision()
+          const existingStaged = stagedByRecordId.get(localRecord.id) || []
+          const restoreRecordId = existingStaged[0] && existingStaged[0]._id
+            ? existingStaged[0]._id
+            : `restore_record_${hashAccountId(`${wxContext.OPENID}:${restoreBatchId}:${localRecord.id}`)}`
+          await records.doc(restoreRecordId).set({
             data: {
               _openid: wxContext.OPENID,
-              ...buildRecordData(localRecord, true),
+              ...buildRecordData({
+                ...localRecord,
+                generation: restoreBatchId,
+                serverRevision
+              }, true),
               restoreBatchId,
               replacing: true
             }
           })
+          for (const duplicate of existingStaged.slice(1)) {
+            await records.doc(duplicate._id).remove()
+          }
           uploadedRecords.push({
             ...localRecord,
-            _id: createRes._id,
+            _id: restoreRecordId,
+            generation: restoreBatchId,
+            serverRevision,
             synced: true
           })
         } catch (err) {
@@ -816,6 +1341,11 @@ exports.main = async (event, context) => {
       const { restoreBatchId, restoreJobId, reason = '恢复已取消' } = event
       if (!restoreBatchId) {
         return failure('无效的恢复批次')
+      }
+      if (activeGeneration === restoreBatchId) {
+        return failure('恢复批次已生效，不能再取消', {
+          code: 'RESTORE_ALREADY_COMMITTED'
+        })
       }
       const activeLock = await getActiveRestoreLock(userMeta, wxContext.OPENID)
       if (activeLock && activeLock.restoreBatchId !== restoreBatchId) {
@@ -855,16 +1385,45 @@ exports.main = async (event, context) => {
       }
 
       const stagedRecords = await fetchRestoreRecords(records, wxContext.OPENID, restoreBatchId)
-      const allCloudRecords = await fetchAllRecords(records, wxContext.OPENID, { includeStaged: true })
-      const visibleCloudRecords = allCloudRecords.filter(item => !item.replacing && item.restoreBatchId !== restoreBatchId)
-      const restoredMeta = await saveDictionaryState(userMeta, wxContext.OPENID, routes, plates, routesMeta, platesMeta)
-
-      await revealStagedRecords(records, stagedRecords)
-
-      for (const item of visibleCloudRecords) {
-        await records.doc(item._id).remove()
+      const expectedCount = Math.max(0, Number(activeLock.expectedCount || 0))
+      if (stagedRecords.length !== expectedCount) {
+        return failure('恢复记录数量校验失败，未切换云端数据', {
+          code: 'RESTORE_COUNT_MISMATCH',
+          expectedCount,
+          uploadedCount: stagedRecords.length
+        })
       }
-      await releaseRestoreLock(userMeta, wxContext.OPENID, restoreBatchId, 'completed')
+      const previousGeneration = activeGeneration
+      const visibleCloudRecords = await fetchAllRecords(records, wxContext.OPENID, {
+        activeGeneration: previousGeneration,
+        command: _
+      })
+      const fallbackRoutesMeta = normalizeDictionaryMeta(routesMeta, routes || [])
+      const fallbackPlatesMeta = normalizeDictionaryMeta(platesMeta, plates || [])
+      let restoredMeta = {
+        routes: getVisibleNamesFromMeta(fallbackRoutesMeta),
+        plates: getVisibleNamesFromMeta(fallbackPlatesMeta),
+        routesMeta: fallbackRoutesMeta,
+        platesMeta: fallbackPlatesMeta
+      }
+      let dictionarySyncPending = false
+
+      await commitActiveGeneration(db, wxContext.OPENID, restoreBatchId, previousGeneration)
+
+      try {
+        restoredMeta = await saveDictionaryState(userMeta, wxContext.OPENID, routes, plates, routesMeta, platesMeta)
+      } catch (err) {
+        dictionarySyncPending = true
+        console.error('恢复记录已生效，字典状态等待重试', err)
+      }
+
+      for (const item of stagedRecords) {
+        try {
+          await records.doc(item._id).update({ data: { replacing: false } })
+        } catch (err) {
+          console.error('清理恢复记录暂存标记失败', item._id, err)
+        }
+      }
 
       const merged = sortRecords(stagedRecords.map(item => {
         const { replacing, restoreBatchId: ignoredRestoreBatchId, ...recordData } = item
@@ -886,11 +1445,41 @@ exports.main = async (event, context) => {
         localCount: merged.length,
         mergedCount: merged.length,
         failedCount: 0,
+        cleanupPendingCount: visibleCloudRecords.length,
+        previousGeneration,
+        activeGeneration: restoreBatchId,
         restoreBatchId,
         restoreJobId,
         cursorAt: actionStartedAt,
+        dictionarySyncPending,
         ...restoredMeta
       })
+    }
+
+    if (action === 'cleanupGeneration') {
+      const generation = String(event.generation || '')
+      if (!generation || generation === activeGeneration) {
+        return failure('不能清理当前生效的数据批次')
+      }
+
+      const allRecords = await fetchAllRecords(records, wxContext.OPENID, {
+        includeStaged: true,
+        command: _
+      })
+      const staleRecords = allRecords.filter(item => {
+        return (item.generation || LEGACY_GENERATION) === generation
+      })
+      let removedCount = 0
+      let failedCount = 0
+      for (const item of staleRecords) {
+        try {
+          await records.doc(item._id).remove()
+          removedCount++
+        } catch (err) {
+          failedCount++
+        }
+      }
+      return success({ removedCount, failedCount, generation })
     }
 
     if (action === 'replace' || action === 'restoreAll') {
@@ -905,19 +1494,25 @@ exports.main = async (event, context) => {
         return failure('无效的本地数据')
       }
 
-      const cloudRecords = await fetchAllRecords(records, wxContext.OPENID)
+      const cloudRecords = await fetchAllRecords(records, wxContext.OPENID, {
+        activeGeneration,
+        command: _
+      })
       const cloudMap = new Map()
       const mergedMap = new Map()
       const failedSyncIds = []
 
       cloudRecords.forEach(record => {
         const key = record.id || record._id
-        cloudMap.set(key, record)
-        mergedMap.set(key, {
-          ...record,
-          id: record.id || record._id,
-          synced: true
-        })
+        const current = cloudMap.get(key)
+        if (!current || compareRecordVersions(record, current) >= 0) {
+          cloudMap.set(key, record)
+          mergedMap.set(key, {
+            ...record,
+            id: record.id || record._id,
+            synced: true
+          })
+        }
       })
 
       for (const localRecord of localRecords) {
@@ -931,18 +1526,17 @@ exports.main = async (event, context) => {
         try {
           if (localRecord.deletedAt) {
             if (cloudRecord) {
-              const localVersion = getRecordVersion(localRecord)
-              const cloudVersion = getRecordVersion(cloudRecord)
-              if (localRecord.synced === false || localVersion >= cloudVersion) {
-                await records.doc(cloudRecord._id).update({
-                  data: buildRecordData(localRecord)
-                })
+              if (localRecord.synced === false) {
+                const mutation = await commitRecordMutation(
+                  db,
+                  wxContext.OPENID,
+                  localRecord,
+                  activeGeneration,
+                  cloudRecord._id
+                )
                 mergedMap.set(recordId, {
-                  ...cloudRecord,
-                  ...localRecord,
-                  _id: cloudRecord._id,
-                  id: recordId,
-                  synced: true
+                  ...mutation.record,
+                  id: recordId
                 })
                 continue
               }
@@ -953,54 +1547,34 @@ exports.main = async (event, context) => {
           }
 
           if (!cloudRecord) {
-            const createRes = await records.add({
-              data: {
-                _openid: wxContext.OPENID,
-                ...buildRecordData(localRecord, true)
-              }
-            })
-
+            if (localRecord.synced !== false) {
+              mergedMap.delete(recordId)
+              continue
+            }
+            const mutation = await commitRecordMutation(
+              db,
+              wxContext.OPENID,
+              localRecord,
+              activeGeneration
+            )
             mergedMap.set(recordId, {
-              ...localRecord,
-              id: recordId,
-              _id: createRes._id,
-              synced: true
+              ...mutation.record,
+              id: recordId
             })
             continue
           }
-
-          const localVersion = getRecordVersion(localRecord)
-          const cloudVersion = getRecordVersion(cloudRecord)
 
           if (localRecord.synced === false) {
-            if (localVersion >= cloudVersion) {
-              await records.doc(cloudRecord._id).update({
-                data: buildRecordData(localRecord)
-              })
-              mergedMap.set(recordId, {
-                ...cloudRecord,
-                ...localRecord,
-                _id: cloudRecord._id,
-                id: recordId,
-                synced: true
-              })
-            } else {
-              mergedMap.set(recordId, {
-                ...cloudRecord,
-                id: recordId,
-                synced: true
-              })
-            }
-            continue
-          }
-
-          if (localVersion > cloudVersion) {
+            const mutation = await commitRecordMutation(
+              db,
+              wxContext.OPENID,
+              localRecord,
+              activeGeneration,
+              cloudRecord._id
+            )
             mergedMap.set(recordId, {
-              ...cloudRecord,
-              ...localRecord,
-              _id: cloudRecord._id,
-              id: recordId,
-              synced: true
+              ...mutation.record,
+              id: recordId
             })
             continue
           }
@@ -1033,7 +1607,8 @@ exports.main = async (event, context) => {
         mergedCount: merged.length,
         failedCount: failedSyncIds.length,
         failedSyncIds,
-        cursorAt: actionStartedAt
+        cursorAt: actionStartedAt,
+        activeGeneration
       })
     }
 

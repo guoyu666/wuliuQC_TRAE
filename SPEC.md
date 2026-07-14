@@ -13,12 +13,14 @@
 - **后端**: 微信云开发
 - **数据库**: 云开发数据库（自动创建 users 和 records 集合）
 - **云函数**: login（自动登录）、syncRecords（数据同步）
-- **本地存储**: wx.setStorageSync（混合模式，数据同时存储本地和云端）
+- **本地存储**: wx.setStorageSync（按微信账号隔离，记录写入通过串行队列落盘）
 
 ### 2.2 数据同步策略
 - **写入**: 本地优先，云端异步同步
-- **读取**: 云端优先，云端获取失败时使用本地
-- **合并**: 多设备数据通过 syncRecords 云函数合并
+- **读取**: 本地缓存优先，按时间游标增量同步；历史页使用云端游标分页
+- **合并**: 多设备数据通过 syncRecords 云函数合并，以服务端 `serverRevision` 判定提交顺序
+- **恢复**: 备份记录先写入独立 generation，完整校验后原子切换 active generation
+- **在线状态**: App 前台生命周期每 30 秒发送一次心跳，90 秒内活跃账号计为在线
 
 ## 3. 功能列表
 
@@ -95,6 +97,8 @@
   "redIn": 3,
   "remark": "备注内容",
   "createTime": "2024-01-01 10:30:00",
+  "updatedAt": 1710000000000,
+  "serverRevision": 12,
   "synced": true
 }
 ```
@@ -116,6 +120,10 @@
   "redIn": 3,
   "remark": "备注内容",
   "createTime": "Date",
+  "updatedAt": 1710000000000,
+  "deletedAt": 0,
+  "serverRevision": 12,
+  "generation": "legacy",
   "syncTime": "Date"
 }
 ```
@@ -172,10 +180,16 @@
 ### 7.2 syncRecords 云函数
 - **功能**: 数据同步、合并、清理
 - **支持操作**:
-  - `upload`: 上传本地记录到云端
+  - `protocol`: 校验客户端与云函数协议版本
+  - `upsert` / `delete`: 事务化写入记录并分配服务端修订号
   - `download`: 从云端拉取记录
-  - `merge`: 合并本地和云端数据
-  - `clear`: 清除云端数据
+  - `downloadChanges`: 按同步时间游标和 active generation 增量拉取，generation 变化时客户端自动回退全量快照
+  - `historyPage`: 按业务日期和记录 ID 游标分页
+  - `syncPending`: 仅上传本地待同步变更，返回单条失败结果
+  - `merge`: 保留的旧协议兼容入口，新版启动同步不再全量上传
+  - `restoreStart` / `restoreStatus` / `restoreChunk` / `restoreCommit` / `restoreAbort`: generation 化分片恢复、断点续传和云端取消
+  - `cleanupGeneration`: 清理已停用的数据批次
+  - `presence`: 更新应用级在线心跳并返回实时人数
 
 ## 8. 数据库集合
 
@@ -185,7 +199,15 @@
 
 ### 8.2 records 集合
 - 存储所有收发记录
-- 按 openid 和 createTime 索引
+- 建议建立 `_openid + generation + date + _id` 复合索引，支持 active generation 历史游标分页
+- 建议建立 `_openid + syncTime + _id` 复合索引，支持增量同步
+
+### 8.3 userMeta 集合
+- 存储字典、服务端修订号、active generation、恢复锁和在线心跳
+- 建议建立 `key + lastSeenAt` 复合索引，支持在线人数统计
+
+### 8.4 restoreJobs 集合
+- 存储恢复批次上传进度和最终状态，便于失败诊断与重试
 
 ## 9. 项目文件结构
 

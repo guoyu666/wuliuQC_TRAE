@@ -44,6 +44,8 @@ Page({
     currentPage: 1,
     pageSize: config.history.pageSize,
     hasMore: true,
+    historyCursor: '',
+    isLoadingMore: false,
     totalCount: 0,
     searchKeyword: '',
     isSearching: false,
@@ -128,17 +130,23 @@ Page({
 
   loadRecords(forceRefresh = false) {
     const requestId = requestGate.next(this, 'loadRecords')
-    return db.getAllRecords({ forceRefresh }).then(sortedRecords => {
+    return db.getHistoryRecordsPage({
+      pageSize: this.data.pageSize,
+      forceRefresh
+    }).then(page => {
       if (!requestGate.isCurrent(this, 'loadRecords', requestId)) return
 
-      const { displayGroupedRecords, hasMore } = this.getPagedGroups(sortedRecords, 1)
+      const sortedRecords = page.records || []
+      const displayGroupedRecords = recordUtils.groupByDate(sortedRecords)
 
       this.setData({
         records: sortedRecords,
         pagingRecords: sortedRecords,
         groupedRecords: displayGroupedRecords,
         currentPage: 1,
-        hasMore: hasMore,
+        hasMore: page.hasMore,
+        historyCursor: page.nextCursor || '',
+        isLoadingMore: false,
         displayGroupedRecords: displayGroupedRecords,
         totalCount: sortedRecords.length,
         syncStatus: db.getSyncStatus()
@@ -198,21 +206,57 @@ Page({
     wx.showModal({
       title: '取消恢复同步',
       content: '取消后将不再把当前备份覆盖到云端，之后会重新拉取云端数据。确定取消吗？',
-      success: (res) => {
+      success: async (res) => {
         if (res.confirm) {
-          db.cancelPendingCloudReplace()
-          this.loadRecords(true).finally(() => {
+          wx.showLoading({ title: '取消中...' })
+          const result = await db.cancelPendingCloudReplace()
+          wx.hideLoading()
+          if (!result.success) {
+            wx.showToast({ title: result.message || '取消失败', icon: 'none' })
             this.refreshSyncStatus()
-          })
+            return
+          }
+          wx.showToast({ title: result.committed ? '恢复已生效' : '已取消恢复', icon: 'success' })
+          this.loadRecords(true).finally(() => this.refreshSyncStatus())
         }
       }
     })
   },
 
   loadMore() {
-    const { pagingRecords, currentPage, hasMore } = this.data
+    const { pagingRecords, currentPage, hasMore, isSearching, isLoadingMore } = this.data
 
-    if (!hasMore) return
+    if (!hasMore || isLoadingMore) return
+
+    if (!isSearching) {
+      this.setData({ isLoadingMore: true })
+      db.getHistoryRecordsPage({
+        cursor: this.data.historyCursor,
+        pageSize: this.data.pageSize
+      }).then(page => {
+        const recordMap = new Map()
+        ;[...this.data.records, ...(page.records || [])].forEach(record => {
+          recordMap.set(record.id || record._id, record)
+        })
+        const records = Array.from(recordMap.values())
+        const displayGroupedRecords = recordUtils.groupByDate(records)
+        this.setData({
+          records,
+          pagingRecords: records,
+          groupedRecords: displayGroupedRecords,
+          displayGroupedRecords,
+          currentPage: currentPage + 1,
+          hasMore: page.hasMore,
+          historyCursor: page.nextCursor || '',
+          isLoadingMore: false,
+          totalCount: records.length
+        })
+      }).catch(() => {
+        this.setData({ isLoadingMore: false })
+        wx.showToast({ title: '加载更多失败', icon: 'none' })
+      })
+      return
+    }
 
     const nextPage = currentPage + 1
     const { displayGroupedRecords, hasMore: stillHasMore, loadedCount } = this.getPagedGroups(pagingRecords, nextPage)
@@ -424,30 +468,30 @@ Page({
   },
 
   showExportModal() {
-    let records = []
-    
-    if (this.data.isSearching) {
-      records = this.getFilteredRecords()
-    } else {
-      records = this.data.records
-    }
-    
-    if (records.length === 0) {
-      wx.showToast({
-        title: '暂无记录可导出',
-        icon: 'none'
-      })
-      return
-    }
+    wx.showLoading({ title: '准备导出...' })
+    const recordsPromise = this.data.isSearching
+      ? Promise.resolve(this.getFilteredRecords())
+      : db.getAllRecords({ forceRefresh: true })
 
-    const dates = records.map(r => r.date).sort()
-    this.setData({
-      showExportModal: true,
-      startDate: dates[0],
-      endDate: dates[dates.length - 1],
-      exportSourceRecords: records,
-      exportRecords: records,
-      exportStats: recordUtils.calculateStats(records)
+    recordsPromise.then(records => {
+      if (records.length === 0) {
+        wx.showToast({ title: '暂无记录可导出', icon: 'none' })
+        return
+      }
+
+      const dates = records.map(r => r.date).filter(Boolean).sort()
+      this.setData({
+        showExportModal: true,
+        startDate: dates[0] || '',
+        endDate: dates[dates.length - 1] || '',
+        exportSourceRecords: records,
+        exportRecords: records,
+        exportStats: recordUtils.calculateStats(records)
+      })
+    }).catch(err => {
+      wx.showToast({ title: err.message || '准备导出失败', icon: 'none' })
+    }).finally(() => {
+      wx.hideLoading()
     })
   },
 
@@ -542,50 +586,42 @@ Page({
   },
 
   restoreBackupData(jsonStr) {
-    const result = db.importAllData(jsonStr)
-    if (!result.success) {
-      wx.showToast({ title: result.message, icon: 'none' })
-      return
-    }
+    wx.showLoading({ title: '恢复中...' })
+    db.importAllData(jsonStr).then(result => {
+      if (!result.success) {
+        wx.showToast({ title: result.message, icon: 'none' })
+        return null
+      }
 
-    feedback.success()
-    this.hideBackupModal()
-    this.setData({
-      routeList: db.getRoutes(),
-      plateList: db.getPlates()
-    })
+      feedback.success()
+      this.hideBackupModal()
+      this.setData({
+        routeList: db.getRoutes(),
+        plateList: db.getPlates()
+      })
 
-    if (db.isLoggedIn()) {
-      wx.showLoading({ title: '上传恢复中...' })
-      let syncToast = { title: '恢复并同步成功', icon: 'success' }
-      db.syncRecords()
+      if (!db.isLoggedIn()) {
+        return this.loadRecords().then(() => ({ localOnly: true }))
+      }
+
+      return db.syncRecords()
         .then(syncResult => {
-          if (!syncResult.success) {
-            syncToast = {
-              title: syncResult.message || '本地已恢复，云端待重试',
-              icon: 'none'
-            }
-          }
+          return this.loadRecords(true).then(() => syncResult)
         })
-        .catch(err => {
-          syncToast = {
-            title: err.message || '本地已恢复，云端待重试',
-            icon: 'none'
-          }
-        })
-        .finally(() => {
-          wx.hideLoading()
-          this.loadRecords(true).finally(() => {
-            this.refreshSyncStatus()
-            wx.showToast(syncToast)
-          })
-        })
-      return
-    }
-
-    this.loadRecords().finally(() => {
+    }).then(syncResult => {
+      if (!syncResult) return
       this.refreshSyncStatus()
-      wx.showToast({ title: '本地恢复成功', icon: 'success' })
+      if (syncResult.localOnly) {
+        wx.showToast({ title: '本地恢复成功', icon: 'success' })
+      } else if (syncResult.success) {
+        wx.showToast({ title: '恢复并同步成功', icon: 'success' })
+      } else {
+        wx.showToast({ title: syncResult.message || '本地已恢复，云端待重试', icon: 'none' })
+      }
+    }).catch(err => {
+      wx.showToast({ title: err.message || '恢复失败', icon: 'none' })
+    }).finally(() => {
+      wx.hideLoading()
     })
   },
 
@@ -766,16 +802,14 @@ Page({
 
   clearSearch() {
     this.clearSearchTimer()
-    const { displayGroupedRecords, hasMore } = this.getPagedGroups(this.data.records, 1)
     this.setData({
       searchKeyword: '',
       isSearching: false,
       filteredRecordCount: 0,
-      pagingRecords: this.data.records,
-      groupedRecords: displayGroupedRecords,
-      displayGroupedRecords,
-      currentPage: 1,
-      hasMore
+      filterStartDate: '',
+      filterEndDate: ''
+    }, () => {
+      this.loadRecords()
     })
   },
 
@@ -817,23 +851,27 @@ Page({
   },
 
   performSearch() {
-    const { records, searchKeyword, filterStartDate, filterEndDate } = this.data
-    const filtered = recordUtils.filterRecords(records, {
-      keyword: searchKeyword,
-      startDate: filterStartDate,
-      endDate: filterEndDate
-    })
-    
-    const { displayGroupedRecords, hasMore } = this.getPagedGroups(filtered, 1)
-    
-    this.setData({
-      isSearching: !!(searchKeyword || filterStartDate || filterEndDate),
-      filteredRecordCount: filtered.length,
-      pagingRecords: filtered,
-      groupedRecords: displayGroupedRecords,
-      displayGroupedRecords: displayGroupedRecords,
-      currentPage: 1,
-      hasMore: hasMore
+    const { searchKeyword, filterStartDate, filterEndDate } = this.data
+    const requestId = requestGate.next(this, 'search')
+    return db.getAllRecords().then(records => {
+      if (!requestGate.isCurrent(this, 'search', requestId)) return
+      const filtered = recordUtils.filterRecords(records, {
+        keyword: searchKeyword,
+        startDate: filterStartDate,
+        endDate: filterEndDate
+      })
+      const { displayGroupedRecords, hasMore } = this.getPagedGroups(filtered, 1)
+
+      this.setData({
+        records,
+        isSearching: !!(searchKeyword || filterStartDate || filterEndDate),
+        filteredRecordCount: filtered.length,
+        pagingRecords: filtered,
+        groupedRecords: displayGroupedRecords,
+        displayGroupedRecords,
+        currentPage: 1,
+        hasMore
+      })
     })
   },
 

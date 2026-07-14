@@ -7,9 +7,11 @@ const backup = require('./backup.js')
 let openid = null
 let isCloudEnabled = false
 let syncRecordsPromise = null
+let recordMutationQueue = Promise.resolve()
 const CLOUD_FUNCTION_NAME = config.cloud.syncFunctionName
 const CLOUD_CACHE_KEY = 'lastCloudFetchAt'
 const CLOUD_CURSOR_KEY = 'lastCloudCursorAt'
+const CLOUD_GENERATION_KEY = 'activeCloudGeneration'
 const CLOUD_CURSOR_OVERLAP = config.cloud.cursorOverlap || 3000
 const CLOUD_REPLACE_KEY = 'pendingCloudReplace'
 const LAST_SYNC_ERROR_KEY = 'lastSyncError'
@@ -32,6 +34,7 @@ const USER_SCOPED_KEYS = new Set([
   PLATES_META_KEY,
   CLOUD_CACHE_KEY,
   CLOUD_CURSOR_KEY,
+  CLOUD_GENERATION_KEY,
   CLOUD_REPLACE_KEY,
   LAST_SYNC_ERROR_KEY,
   LAST_SYNC_META_KEY,
@@ -131,6 +134,20 @@ function getRecordVersion(record) {
   )
 }
 
+function getServerRevision(record) {
+  const revision = Number(record && record.serverRevision || 0)
+  return Number.isFinite(revision) && revision > 0 ? revision : 0
+}
+
+function compareRecordVersions(left, right) {
+  const leftRevision = getServerRevision(left)
+  const rightRevision = getServerRevision(right)
+  if (leftRevision || rightRevision) {
+    return leftRevision - rightRevision
+  }
+  return getRecordVersion(left) - getRecordVersion(right)
+}
+
 function getMaxRecordVersion(records = []) {
   return records.reduce((max, record) => Math.max(max, getRecordVersion(record)), 0)
 }
@@ -147,8 +164,75 @@ function saveStoredRecords(records) {
   return safeSetStorageSync('records', records)
 }
 
+function enqueueRecordMutation(mutator) {
+  const task = recordMutationQueue.then(() => {
+    const currentRecords = getStoredRecords()
+    const result = mutator(currentRecords.slice()) || {}
+    const nextRecords = Array.isArray(result.records) ? result.records : currentRecords
+
+    if (!saveStoredRecords(nextRecords)) {
+      return {
+        ...result,
+        success: false,
+        message: '本地存储失败，请清理空间后重试'
+      }
+    }
+
+    return {
+      success: true,
+      ...result,
+      records: nextRecords
+    }
+  })
+
+  recordMutationQueue = task.catch(() => {})
+  return task
+}
+
+function mergeCloudRecordsIntoStorage(cloudRecords, options = {}) {
+  return enqueueRecordMutation(currentRecords => {
+    const merged = mergeRecords(currentRecords, cloudRecords, options)
+    return {
+      records: options.compactTombstones
+        ? merged.filter(record => !(record.deletedAt && record.synced))
+        : merged
+    }
+  })
+}
+
 function createRecordId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function createMutationId() {
+  return `mutation-${createRecordId()}`
+}
+
+function getRestoreSnapshotSignature(records = []) {
+  const snapshot = records
+    .map(record => ({
+      id: record.id || record._id || '',
+      date: record.date || '',
+      routeName: record.routeName || '',
+      plateNumber: record.plateNumber || '',
+      sendBlueOut: Number(record.sendBlueOut || 0),
+      sendRedOut: Number(record.sendRedOut || 0),
+      blueOut: Number(record.blueOut || 0),
+      blueIn: Number(record.blueIn || 0),
+      redOut: Number(record.redOut || 0),
+      redIn: Number(record.redIn || 0),
+      remark: record.remark || '',
+      updatedAt: parseRecordTime(record.updatedAt),
+      deletedAt: parseRecordTime(record.deletedAt)
+    }))
+    .sort((left, right) => String(left.id).localeCompare(String(right.id)))
+
+  const input = JSON.stringify(snapshot)
+  let hash = 2166136261
+  for (let index = 0; index < input.length; index++) {
+    hash = Math.imul(hash ^ input.charCodeAt(index), 16777619) >>> 0
+  }
+  return `${snapshot.length}:${hash.toString(16).padStart(8, '0')}`
 }
 
 function getLastCloudFetchAt() {
@@ -166,6 +250,14 @@ function getLastCloudCursorAt() {
 function setLastCloudCursorAt(timestamp) {
   const normalized = Math.max(0, Number(timestamp || 0) - CLOUD_CURSOR_OVERLAP)
   safeSetStorageSync(CLOUD_CURSOR_KEY, normalized)
+}
+
+function getActiveCloudGeneration() {
+  return safeGetStorageSync(CLOUD_GENERATION_KEY, '')
+}
+
+function setActiveCloudGeneration(generation) {
+  return safeSetStorageSync(CLOUD_GENERATION_KEY, String(generation || ''))
 }
 
 function hasPendingCloudReplace() {
@@ -209,8 +301,50 @@ function markPendingCloudReplaceFailed(error) {
   })
 }
 
-function cancelPendingCloudReplace() {
-  setPendingCloudReplace(false)
+async function cancelPendingCloudReplace() {
+  const pending = getPendingCloudReplaceMeta()
+  if (!pending) {
+    return { success: true }
+  }
+
+  const restoreBatchId = pending.restoreBatchId || ''
+  if (!restoreBatchId) {
+    setPendingCloudReplace(false)
+    return { success: true }
+  }
+  if (!isCloudEnabled || !openid) {
+    return { success: false, message: '需要联网后才能取消云端恢复任务' }
+  }
+
+  try {
+    const status = await callSyncFunction({
+      action: 'restoreStatus',
+      restoreBatchId
+    })
+    if (status.success && status.status === 'committed') {
+      setActiveCloudGeneration(status.activeGeneration || restoreBatchId)
+      setLastCloudCursorAt(0)
+      setPendingCloudReplace(false)
+      return { success: true, committed: true, message: '恢复已生效，已刷新云端状态' }
+    }
+
+    const result = await callSyncFunction({
+      action: 'restoreAbort',
+      restoreBatchId,
+      restoreJobId: pending.restoreJobId || '',
+      reason: '用户取消恢复'
+    })
+    if (!result.success) {
+      return { success: false, message: result.message || '取消云端恢复失败' }
+    }
+
+    setPendingCloudReplace(false)
+    setLastCloudCursorAt(0)
+    return { success: true }
+  } catch (err) {
+    setLastSyncError(err.message)
+    return { success: false, message: err.message || '取消云端恢复失败' }
+  }
 }
 
 async function callSyncFunction(data = {}) {
@@ -242,6 +376,18 @@ async function callSyncFunction(data = {}) {
   return result
 }
 
+async function upsertRecordWithRetry(record, retries = 1) {
+  const result = await callSyncFunction({ action: 'upsert', record })
+  if (result.success && result.skipped && result.record && retries > 0) {
+    return upsertRecordWithRetry({
+      ...record,
+      _id: result.record._id || record._id,
+      serverRevision: getServerRevision(result.record)
+    }, retries - 1)
+  }
+  return result
+}
+
 function formatRecordTime(value) {
   if (!value) return ''
 
@@ -264,6 +410,7 @@ function normalizeRecord(record, syncedFallback = false) {
     ...record,
     createTime: formatRecordTime(record.createTime),
     updatedAt: record.updatedAt || getRecordVersion(record) || Date.now(),
+    serverRevision: getServerRevision(record),
     synced: typeof record.synced === 'boolean' ? record.synced : syncedFallback
   }
 }
@@ -280,7 +427,7 @@ function mergeRecords(localRecords, cloudRecords, options = {}) {
     const normalized = normalizeRecord(record, true)
     const key = normalized.id || normalized._id || `cloud-${index}`
     const existing = mergedMap.get(key)
-    if (!existing || getRecordVersion(normalized) >= getRecordVersion(existing)) {
+    if (!existing || compareRecordVersions(normalized, existing) >= 0) {
       mergedMap.set(key, normalized)
     }
   })
@@ -298,7 +445,7 @@ function mergeRecords(localRecords, cloudRecords, options = {}) {
     }
 
     if (existing.deletedAt) {
-      if (normalized.synced === false && getRecordVersion(normalized) > getRecordVersion(existing)) {
+      if (normalized.synced === false && compareRecordVersions(normalized, existing) >= 0) {
         mergedMap.set(key, {
           ...existing,
           ...normalized,
@@ -309,7 +456,7 @@ function mergeRecords(localRecords, cloudRecords, options = {}) {
       return
     }
 
-    if (normalized.synced === false && getRecordVersion(normalized) >= getRecordVersion(existing)) {
+    if (normalized.synced === false) {
       mergedMap.set(key, {
         ...existing,
         ...normalized,
@@ -319,7 +466,7 @@ function mergeRecords(localRecords, cloudRecords, options = {}) {
       return
     }
 
-    if (getRecordVersion(normalized) > getRecordVersion(existing)) {
+    if (compareRecordVersions(normalized, existing) > 0) {
       mergedMap.set(key, {
         ...existing,
         ...normalized,
@@ -347,7 +494,9 @@ function buildCloudUpdateData(source, includeCreateTime = false) {
     'redIn',
     'remark',
     'updatedAt',
-    'deletedAt'
+    'deletedAt',
+    'serverRevision',
+    'generation'
   ]
 
   fields.forEach(field => {
@@ -476,6 +625,7 @@ function claimLegacyDataForAccount() {
     PLATES_META_KEY,
     CLOUD_CACHE_KEY,
     CLOUD_CURSOR_KEY,
+    CLOUD_GENERATION_KEY,
     CLOUD_REPLACE_KEY,
     LAST_SYNC_ERROR_KEY,
     LAST_SYNC_META_KEY,
@@ -617,7 +767,7 @@ function getPlatesMeta() {
 }
 
 function hasLocalSyncWork(records = getStoredRecords()) {
-  return records.some(record => record && (record.synced === false || record.deletedAt))
+  return records.some(record => record && record.synced === false)
 }
 
 function syncDictionariesToCloud(options = {}) {
@@ -728,6 +878,8 @@ function migrateStorageIfNeeded() {
   const ok = saveStoredRecords(migratedRecords) &&
     saveRoutes(migratedRoutes) &&
     savePlates(migratedPlates) &&
+    safeSetStorageSync(CLOUD_GENERATION_KEY, '') &&
+    safeSetStorageSync(CLOUD_CURSOR_KEY, 0) &&
     safeSetStorageSync(STORAGE_SCHEMA_KEY, STORAGE_SCHEMA_VERSION)
 
   return {
@@ -809,39 +961,46 @@ async function initCloud(userInfo = {}) {
 }
 
 async function addRecord(record) {
-  const localRecords = getStoredRecords()
+  const mutationId = createMutationId()
   const newRecord = {
     ...record,
     id: createRecordId(),
     createTime: util.formatTime(new Date()),
     updatedAt: Date.now(),
+    localMutationId: mutationId,
     synced: false
   }
 
-  localRecords.push(newRecord)
-  if (!saveStoredRecords(localRecords)) {
-    return { success: false, message: '本地存储失败' }
+  const localResult = await enqueueRecordMutation(records => ({
+    records: sortRecords([...records, newRecord])
+  }))
+  if (!localResult.success) {
+    return localResult
   }
 
   if (isCloudEnabled && openid) {
     try {
-      const result = await callSyncFunction({
-        action: 'upsert',
-        record: newRecord
-      })
-
-      newRecord.synced = true
-      if (result.record && result.record._id) {
-        newRecord._id = result.record._id
+      const result = await upsertRecordWithRetry(newRecord)
+      if (!result.success || !result.record) {
+        throw new Error(result.message || '云端同步失败')
       }
-      const index = localRecords.findIndex(r => r.id === newRecord.id)
-      if (index !== -1) {
-        localRecords[index] = normalizeRecord({
-          ...newRecord,
-          ...result.record,
-          synced: true
-        }, true)
-        saveStoredRecords(localRecords)
+
+      const saved = await enqueueRecordMutation(records => ({
+        records: records.map(current => {
+          if (current.id !== newRecord.id || current.localMutationId !== mutationId) {
+            return current
+          }
+          const normalized = normalizeRecord({
+            ...current,
+            ...result.record,
+            localMutationId: '',
+            synced: true
+          }, true)
+          return normalized.deletedAt ? null : normalized
+        }).filter(Boolean)
+      }))
+      if (!saved.success) {
+        return saved
       }
 
       return { success: true, id: newRecord.id, synced: true }
@@ -863,23 +1022,38 @@ async function getTodayRecords() {
 }
 
 async function getAllRecords(options = {}) {
-  const { forceRefresh = false } = options
+  const {
+    forceRefresh = false,
+    bypassThrottle = false,
+    throwOnCloudError = false
+  } = options
   const localRecords = getStoredRecords()
   const shouldUseLocalFirst = localRecords.length > 0
   const lastCloudFetchAt = getLastCloudFetchAt()
   const lastCloudCursorAt = getLastCloudCursorAt()
+  const storedGeneration = getActiveCloudGeneration()
   const shouldRefreshCloud = Date.now() - lastCloudFetchAt >= CLOUD_FETCH_INTERVAL
 
   if (hasPendingCloudReplace()) {
     return getVisibleRecords(sortRecords(localRecords))
   }
 
-  if (isCloudEnabled && openid && (forceRefresh || !shouldUseLocalFirst || shouldRefreshCloud)) {
+  if (isCloudEnabled && openid && (forceRefresh || bypassThrottle || !shouldUseLocalFirst || shouldRefreshCloud)) {
     try {
-      const shouldUseIncremental = !forceRefresh && shouldUseLocalFirst && lastCloudCursorAt > 0
-      const result = await callSyncFunction(shouldUseIncremental
+      let shouldUseIncremental = !forceRefresh && shouldUseLocalFirst && lastCloudCursorAt > 0 && !!storedGeneration
+      let result = await callSyncFunction(shouldUseIncremental
         ? { action: 'downloadChanges', since: lastCloudCursorAt }
         : { action: 'download' })
+
+      if (
+        result.success &&
+        shouldUseIncremental &&
+        result.activeGeneration &&
+        result.activeGeneration !== storedGeneration
+      ) {
+        result = await callSyncFunction({ action: 'download' })
+        shouldUseIncremental = false
+      }
 
       if (result.success) {
         const cloudRecords = (result.records || []).map(record => normalizeRecord({
@@ -887,15 +1061,21 @@ async function getAllRecords(options = {}) {
           id: record.id || record._id,
           synced: true
         }, true))
-        const mergedRecords = mergeRecords(localRecords, cloudRecords, {
-          fullCloudSnapshot: !shouldUseIncremental
+        const saved = await mergeCloudRecordsIntoStorage(cloudRecords, {
+          fullCloudSnapshot: !shouldUseIncremental,
+          compactTombstones: true
         })
-        if (!saveStoredRecords(mergedRecords)) {
+        if (!saved.success) {
+          if (throwOnCloudError) {
+            throw new Error(saved.message || '本地存储失败，请清理空间后重试')
+          }
           return getVisibleRecords(sortRecords(localRecords))
         }
+        const mergedRecords = saved.records
         refreshDictionariesFromCloud()
         setLastCloudFetchAt(Date.now())
         setLastCloudCursorAt(result.cursorAt || getMaxRecordVersion(cloudRecords) || Date.now())
+        setActiveCloudGeneration(result.activeGeneration || storedGeneration)
         if (hasLocalSyncWork(mergedRecords)) {
           syncRecords().catch(err => {
             console.error('后台补同步失败', err)
@@ -903,92 +1083,217 @@ async function getAllRecords(options = {}) {
         }
         return getVisibleRecords(mergedRecords)
       }
+      if (throwOnCloudError) {
+        throw new Error(result.message || '云端数据刷新失败')
+      }
     } catch (err) {
       setLastSyncError(err.message)
+      if (throwOnCloudError) throw err
     }
   }
 
   return getVisibleRecords(sortRecords(localRecords))
 }
 
-async function deleteRecord(id) {
-  const records = getStoredRecords()
-  const deletingAt = Date.now()
-  let newRecords = records.map(r => {
-    if (r.id === id) {
+async function getHistoryRecordsPage(options = {}) {
+  const pageSize = Math.min(Math.max(Number(options.pageSize || 20), 1), 100)
+  const cursor = options.cursor || ''
+  const localRecords = getVisibleRecords(sortRecords(getStoredRecords()))
+  const getLocalPage = (offset = 0, fallback = false) => {
+    const records = localRecords.slice(offset, offset + pageSize)
+    const nextOffset = offset + records.length
+    return {
+      success: true,
+      records,
+      nextCursor: nextOffset < localRecords.length ? `local:${nextOffset}` : '',
+      hasMore: nextOffset < localRecords.length,
+      source: 'local',
+      fallback
+    }
+  }
+
+  if (typeof cursor === 'string' && cursor.startsWith('local:')) {
+    return getLocalPage(Number(cursor.slice(6) || 0), true)
+  }
+
+  if (hasPendingCloudReplace() || !isCloudEnabled || !openid) {
+    return getLocalPage()
+  }
+
+  try {
+    const pendingRecords = localRecords.filter(record => record.synced === false && !record.deletedAt)
+    const pendingOffset = typeof cursor === 'string' && cursor.startsWith('pending:')
+      ? Number(cursor.slice(8) || 0)
+      : 0
+    const shouldPagePending = !cursor || (typeof cursor === 'string' && cursor.startsWith('pending:'))
+    const pendingPage = shouldPagePending
+      ? pendingRecords.slice(pendingOffset, pendingOffset + pageSize)
+      : []
+    const nextPendingOffset = pendingOffset + pendingPage.length
+    if (pendingPage.length === pageSize) {
       return {
-        ...r,
-        deletedAt: deletingAt,
-        updatedAt: deletingAt,
-        synced: false
+        success: true,
+        records: pendingPage,
+        nextCursor: `pending:${nextPendingOffset}`,
+        hasMore: true,
+        source: 'local-pending'
       }
     }
-    return r
+
+    const result = await callSyncFunction({
+      action: 'historyPage',
+      cursor: shouldPagePending ? '' : cursor,
+      pageSize: pageSize - pendingPage.length
+    })
+    if (!result.success) {
+      throw new Error(result.message || '历史记录加载失败')
+    }
+
+    const previousGeneration = getActiveCloudGeneration()
+    if (result.activeGeneration && result.activeGeneration !== previousGeneration) {
+      setActiveCloudGeneration(result.activeGeneration)
+      setLastCloudCursorAt(0)
+    }
+
+    const cloudRecords = (result.records || []).map(record => normalizeRecord({
+      ...record,
+      id: record.id || record._id,
+      synced: true
+    }, true))
+    const saved = await mergeCloudRecordsIntoStorage(cloudRecords, { compactTombstones: true })
+    if (!saved.success) {
+      throw new Error(saved.message || '本地存储失败，请清理空间后重试')
+    }
+
+    const pageMap = new Map()
+    ;[...pendingPage, ...cloudRecords].forEach(record => {
+      const key = record.id || record._id
+      const current = pageMap.get(key)
+      if (!current || compareRecordVersions(record, current) >= 0) {
+        pageMap.set(key, record)
+      }
+    })
+
+    return {
+      success: true,
+      records: sortRecords(Array.from(pageMap.values()).filter(record => !record.deletedAt)),
+      nextCursor: result.nextCursor || '',
+      hasMore: !!result.hasMore,
+      source: 'cloud'
+    }
+  } catch (err) {
+    setLastSyncError(err.message)
+    return getLocalPage(0, true)
+  }
+}
+
+async function deleteRecord(id) {
+  const deletingAt = Date.now()
+  const mutationId = createMutationId()
+  const localResult = await enqueueRecordMutation(records => {
+    let deletingRecord = null
+    const nextRecords = records.map(current => {
+      if (current.id !== id) return current
+      deletingRecord = {
+        ...current,
+        deletedAt: deletingAt,
+        updatedAt: deletingAt,
+        localMutationId: mutationId,
+        synced: false
+      }
+      return deletingRecord
+    })
+    return { records: nextRecords, deletingRecord }
   })
-  if (!saveStoredRecords(newRecords)) {
-    return { success: false, message: '本地存储失败' }
+  if (!localResult.success) {
+    return localResult
+  }
+  if (!localResult.deletingRecord) {
+    return { success: false, message: '记录不存在' }
   }
 
   if (isCloudEnabled && openid) {
     try {
-      const deletingRecord = newRecords.find(r => r.id === id)
       const result = await callSyncFunction({
         action: 'delete',
         id,
-        record: deletingRecord
+        record: localResult.deletingRecord
       })
-      if (result.record && result.skipped) {
-        newRecords = getStoredRecords().map(r => {
-          if (r.id === id) {
-            return normalizeRecord(result.record, true)
-          }
-          return r
-        })
-      } else {
-        newRecords = getStoredRecords().filter(r => r.id !== id)
+      if (!result.success) {
+        throw new Error(result.message || '云端删除失败')
       }
-      saveStoredRecords(newRecords)
+      const saved = await enqueueRecordMutation(records => ({
+        records: records.map(current => {
+          if (current.id !== id || current.localMutationId !== mutationId) {
+            return current
+          }
+          if (result.record && result.skipped) {
+            return normalizeRecord({
+              ...result.record,
+              localMutationId: '',
+              synced: true
+            }, true)
+          }
+          return null
+        }).filter(Boolean)
+      }))
+      if (!saved.success) {
+        return saved
+      }
     } catch (err) {
       console.error('云端删除失败', err)
       setLastSyncError(err.message)
     }
-  } else {
-    newRecords = records.filter(r => r.id !== id)
-    saveStoredRecords(newRecords)
   }
 
   return { success: true }
 }
 
 async function updateRecord(id, updates) {
-  const records = getStoredRecords()
-  const newRecords = records.map(r => {
-    if (r.id === id) {
-      return { ...r, ...updates, updatedAt: Date.now(), synced: false }
-    }
-    return r
+  const mutationId = createMutationId()
+  const localResult = await enqueueRecordMutation(records => {
+    let updatedRecord = null
+    const nextRecords = records.map(current => {
+      if (current.id !== id) return current
+      updatedRecord = {
+        ...current,
+        ...updates,
+        updatedAt: Date.now(),
+        localMutationId: mutationId,
+        synced: false
+      }
+      return updatedRecord
+    })
+    return { records: nextRecords, updatedRecord }
   })
-  if (!saveStoredRecords(newRecords)) {
-    return { success: false, message: '本地存储失败' }
+  if (!localResult.success) {
+    return localResult
+  }
+  if (!localResult.updatedRecord) {
+    return { success: false, message: '记录不存在' }
   }
 
   if (isCloudEnabled && openid) {
     try {
-      const updatedRecord = newRecords.find(r => r.id === id)
-      if (updatedRecord) {
-        const result = await callSyncFunction({
-          action: 'upsert',
-          record: updatedRecord
-        })
-        const index = newRecords.findIndex(r => r.id === id)
-        if (index !== -1) {
-          newRecords[index] = normalizeRecord({
-            ...newRecords[index],
-            ...(result.record || {}),
+      const result = await upsertRecordWithRetry(localResult.updatedRecord)
+      if (!result.success || !result.record) {
+        throw new Error(result.message || '云端更新失败')
+      }
+      const saved = await enqueueRecordMutation(records => ({
+        records: records.map(current => {
+          if (current.id !== id || current.localMutationId !== mutationId) {
+            return current
+          }
+          return normalizeRecord({
+            ...current,
+            ...result.record,
+            localMutationId: '',
             synced: true
           }, true)
-          saveStoredRecords(newRecords)
-        }
+        })
+      }))
+      if (!saved.success) {
+        return saved
       }
     } catch (err) {
       console.error('云端更新失败', err)
@@ -1004,29 +1309,142 @@ async function getRecordById(id) {
   return records.find(r => r.id === id) || null
 }
 
-async function syncPendingCloudReplace() {
-  const localRecords = getVisibleRecords(getStoredRecords())
-  const startResult = await callSyncFunction({
-    action: 'restoreStart',
-    localCount: localRecords.length
+async function applyPendingSyncResults(syncedRecords = []) {
+  const resultMap = new Map()
+  syncedRecords.forEach(record => {
+    if (record && record.id) resultMap.set(record.id, normalizeRecord(record, true))
   })
 
-  if (!startResult.success) {
-    return startResult
+  return enqueueRecordMutation(records => ({
+    records: records.map(current => {
+      const syncedRecord = resultMap.get(current.id)
+      if (!syncedRecord) return current
+      if (
+        current.localMutationId &&
+        syncedRecord.localMutationId &&
+        current.localMutationId !== syncedRecord.localMutationId
+      ) {
+        return current
+      }
+
+      const nextRecord = normalizeRecord({
+        ...current,
+        ...syncedRecord,
+        localMutationId: '',
+        synced: true
+      }, true)
+      return nextRecord.deletedAt ? null : nextRecord
+    }).filter(Boolean)
+  }))
+}
+
+async function syncPendingRecords() {
+  const pendingRecords = getStoredRecords().filter(record => record && record.synced === false)
+  const failedSyncIds = []
+  let syncedCount = 0
+
+  for (let offset = 0; offset < pendingRecords.length; offset += RESTORE_CHUNK_SIZE) {
+    const chunk = pendingRecords.slice(offset, offset + RESTORE_CHUNK_SIZE)
+    const result = await callSyncFunction({
+      action: 'syncPending',
+      localRecords: chunk
+    })
+    if (!result.success) {
+      failedSyncIds.push(...chunk.map(record => record.id).filter(Boolean))
+      continue
+    }
+
+    const saved = await applyPendingSyncResults(result.records || [])
+    if (!saved.success) {
+      throw new Error(saved.message || '同步结果写入本地失败')
+    }
+    syncedCount += Number(result.syncedCount || 0)
+    failedSyncIds.push(...(result.failedSyncIds || []))
+    if (result.activeGeneration) {
+      const currentGeneration = getActiveCloudGeneration()
+      if (currentGeneration && currentGeneration !== result.activeGeneration) {
+        setLastCloudCursorAt(0)
+      }
+      setActiveCloudGeneration(result.activeGeneration)
+    }
   }
 
-  const restoreBatchId = startResult.restoreBatchId
-  const restoreJobId = startResult.restoreJobId || ''
+  return {
+    success: failedSyncIds.length === 0,
+    syncedCount,
+    failedCount: failedSyncIds.length,
+    failedSyncIds
+  }
+}
+
+async function syncPendingCloudReplace() {
+  const localRecords = getVisibleRecords(getStoredRecords())
+  const pending = getPendingCloudReplaceMeta() || {}
+  const restoreSignature = getRestoreSnapshotSignature(localRecords)
+  let restoreBatchId = pending.restoreBatchId || ''
+  let restoreJobId = pending.restoreJobId || ''
+  let nextOffset = Math.max(0, Number(pending.nextOffset || pending.uploadedCount || 0))
   const uploadedRecords = []
   let failedCount = 0
 
-  setPendingCloudReplace(true, {
-    restoreBatchId,
-    restoreJobId,
-    uploadedCount: 0
-  })
+  if (restoreBatchId) {
+    const statusResult = await callSyncFunction({
+      action: 'restoreStatus',
+      restoreBatchId
+    })
+    if (!statusResult.success) return statusResult
 
-  for (let offset = 0; offset < localRecords.length; offset += RESTORE_CHUNK_SIZE) {
+    if (statusResult.status === 'committed') {
+      const downloadResult = await callSyncFunction({ action: 'download' })
+      if (!downloadResult.success) return downloadResult
+      return {
+        success: true,
+        mergedRecords: downloadResult.records || [],
+        cloudCount: downloadResult.count || 0,
+        localCount: localRecords.length,
+        mergedCount: (downloadResult.records || []).length,
+        failedCount: 0,
+        cursorAt: downloadResult.cursorAt,
+        activeGeneration: downloadResult.activeGeneration || restoreBatchId,
+        restoreBatchId
+      }
+    }
+
+    const expectedCount = Number(statusResult.expectedCount || 0)
+    const snapshotChanged = !!pending.restoreSignature && pending.restoreSignature !== restoreSignature
+    if (statusResult.status !== 'active' || expectedCount !== localRecords.length || snapshotChanged) {
+      await callSyncFunction({
+        action: 'restoreAbort',
+        restoreBatchId,
+        restoreJobId,
+        reason: statusResult.status === 'active' ? '本地恢复数据已变化' : '恢复任务已过期'
+      }).catch(() => {})
+      restoreBatchId = ''
+      restoreJobId = ''
+      nextOffset = 0
+    }
+  }
+
+  if (!restoreBatchId) {
+    const startResult = await callSyncFunction({
+      action: 'restoreStart',
+      localCount: localRecords.length
+    })
+    if (!startResult.success) return startResult
+
+    restoreBatchId = startResult.restoreBatchId
+    restoreJobId = startResult.restoreJobId || ''
+    nextOffset = 0
+    setPendingCloudReplace(true, {
+      restoreBatchId,
+      restoreJobId,
+      nextOffset: 0,
+      uploadedCount: 0,
+      restoreSignature
+    })
+  }
+
+  for (let offset = nextOffset; offset < localRecords.length; offset += RESTORE_CHUNK_SIZE) {
     const chunk = localRecords.slice(offset, offset + RESTORE_CHUNK_SIZE)
     const chunkResult = await callSyncFunction({
       action: 'restoreChunk',
@@ -1045,8 +1463,10 @@ async function syncPendingCloudReplace() {
     setPendingCloudReplace(true, {
       restoreBatchId,
       restoreJobId,
-      uploadedCount: uploadedRecords.length,
-      failedCount
+      nextOffset: offset + chunk.length,
+      uploadedCount: offset + chunk.length,
+      failedCount,
+      restoreSignature
     })
   }
 
@@ -1065,7 +1485,7 @@ async function syncPendingCloudReplace() {
     }
   }
 
-  return callSyncFunction({
+  const commitResult = await callSyncFunction({
     action: 'restoreCommit',
     restoreBatchId,
     restoreJobId,
@@ -1074,6 +1494,81 @@ async function syncPendingCloudReplace() {
     routesMeta: getRoutesMeta(),
     platesMeta: getPlatesMeta()
   })
+
+  if (commitResult.success && commitResult.dictionarySyncPending) {
+    await syncDictionariesToCloud({ mode: 'replace' }).catch(() => {})
+  }
+
+  if (commitResult.success && commitResult.previousGeneration) {
+    callSyncFunction({
+      action: 'cleanupGeneration',
+      generation: commitResult.previousGeneration
+    }).catch(() => {})
+  }
+  if (commitResult.success) {
+    setActiveCloudGeneration(commitResult.activeGeneration || commitResult.restoreBatchId || restoreBatchId)
+    setLastCloudCursorAt(commitResult.cursorAt || 0)
+  }
+  return commitResult
+}
+
+async function doIncrementalRecordSync() {
+  const localCount = getStoredRecords().length
+  const uploadResult = await syncPendingRecords()
+  await getAllRecords({
+    bypassThrottle: true,
+    throwOnCloudError: true
+  })
+
+  const records = getStoredRecords()
+  const visibleRecords = getVisibleRecords(records)
+  const remainingPending = records.filter(record => record && record.synced === false)
+  const failedCount = Math.max(uploadResult.failedCount || 0, remainingPending.length)
+  const syncedCount = visibleRecords.filter(record => record.synced).length
+
+  if (failedCount > 0) {
+    const message = `仍有 ${failedCount} 条记录待同步，请重试`
+    setLastSyncError(message)
+    setLastSyncMeta({
+      status: 'partial',
+      action: 'incremental',
+      lastErrorAt: Date.now(),
+      lastError: message,
+      syncedCount,
+      cloudCount: visibleRecords.length,
+      localCount,
+      mergedCount: visibleRecords.length,
+      failedCount
+    })
+    return {
+      success: false,
+      partial: true,
+      message,
+      synced: syncedCount,
+      failedCount
+    }
+  }
+
+  setLastSyncError('')
+  setLastSyncMeta({
+    status: 'success',
+    action: 'incremental',
+    lastSuccessAt: Date.now(),
+    lastErrorAt: 0,
+    lastError: '',
+    syncedCount,
+    cloudCount: visibleRecords.length,
+    localCount,
+    mergedCount: visibleRecords.length,
+    failedCount: 0
+  })
+  return {
+    success: true,
+    synced: syncedCount,
+    cloudCount: visibleRecords.length,
+    localCount,
+    mergedCount: visibleRecords.length
+  }
 }
 
 async function doSyncRecords() {
@@ -1087,23 +1582,25 @@ async function doSyncRecords() {
 
   try {
     const pendingCloudReplace = hasPendingCloudReplace()
-    const result = pendingCloudReplace
-      ? await syncPendingCloudReplace()
-      : await callSyncFunction({
-        action: 'merge',
-        localRecords: getStoredRecords()
-      })
+    if (!pendingCloudReplace) {
+      return await doIncrementalRecordSync()
+    }
+    const result = await syncPendingCloudReplace()
 
     if (result.success) {
-      const mergedRecords = sortRecords((result.mergedRecords || []).map(record => normalizeRecord(record, true)))
-
-      if (!saveStoredRecords(mergedRecords)) {
+      const cloudRecords = (result.mergedRecords || []).map(record => normalizeRecord(record, true))
+      const saved = await mergeCloudRecordsIntoStorage(cloudRecords, {
+        fullCloudSnapshot: true,
+        compactTombstones: true
+      })
+      if (!saved.success) {
         return {
           success: false,
           message: '本地存储失败，请清理空间后重试',
           synced: 0
         }
       }
+      const mergedRecords = saved.records
       if (!pendingCloudReplace || !result.failedCount) {
         setPendingCloudReplace(false)
       } else {
@@ -1117,10 +1614,11 @@ async function doSyncRecords() {
       }
       setLastCloudFetchAt(Date.now())
       setLastCloudCursorAt(result.cursorAt || getMaxRecordVersion(mergedRecords) || Date.now())
+      setActiveCloudGeneration(result.activeGeneration || getActiveCloudGeneration())
       setLastSyncError('')
       setLastSyncMeta({
         status: 'success',
-        action: pendingCloudReplace ? 'restore' : 'merge',
+        action: 'restore',
         lastSuccessAt: Date.now(),
         lastErrorAt: 0,
         lastError: '',
@@ -1146,7 +1644,7 @@ async function doSyncRecords() {
     setLastSyncError(result.message || '同步失败')
     setLastSyncMeta({
       status: 'failed',
-      action: pendingCloudReplace ? 'restore' : 'merge',
+      action: 'restore',
       lastErrorAt: Date.now(),
       lastError: result.message || '同步失败',
       failedCount: result.failedCount || 0
@@ -1165,7 +1663,7 @@ async function doSyncRecords() {
     setLastSyncError(err.message)
     setLastSyncMeta({
       status: 'failed',
-      action: hasPendingCloudReplace() ? 'restore' : 'merge',
+      action: hasPendingCloudReplace() ? 'restore' : 'incremental',
       lastErrorAt: Date.now(),
       lastError: err.message,
       failedCount: 1
@@ -1214,6 +1712,7 @@ function getSyncStatus() {
     lastSyncText: formatMetaTime(lastSyncMeta.lastSuccessAt),
     lastErrorAt: lastSyncMeta.lastErrorAt || 0,
     lastErrorText: formatMetaTime(lastSyncMeta.lastErrorAt),
+    lastSyncStatus: lastSyncMeta.status || '',
     lastSyncAction: lastSyncMeta.action || '',
     lastSyncedCount: lastSyncMeta.syncedCount || 0,
     lastCloudCount: lastSyncMeta.cloudCount || 0,
@@ -1310,7 +1809,7 @@ function inspectBackupData(jsonStr) {
   return backup.inspectBackup(jsonStr)
 }
 
-function importAllData(jsonStr) {
+async function importAllData(jsonStr) {
   const parsed = backup.parseBackup(jsonStr)
   if (!parsed.success) {
     return parsed
@@ -1323,15 +1822,25 @@ function importAllData(jsonStr) {
       ...record,
       id: record.id || record._id || `${importedAt}-${index}`,
       updatedAt: importedAt,
+      serverRevision: 0,
+      generation: '',
+      localMutationId: createMutationId(),
       synced: false
     }, false))
-    const ok = saveStoredRecords(sortRecords(importedRecords)) &&
+    const stored = await enqueueRecordMutation(() => ({
+      records: sortRecords(importedRecords)
+    }))
+    const ok = stored.success &&
       saveDictionaryState('routes', ROUTES_META_KEY, data.routes || [], data.routesMeta || {}) &&
       saveDictionaryState('plates', PLATES_META_KEY, data.plates || [], data.platesMeta || {})
     if (!ok) {
       return { success: false, message: '本地存储失败，请清理空间后重试' }
     }
-    setPendingCloudReplace(true, { startedAt: importedAt, failedCount: 0 })
+    setPendingCloudReplace(true, {
+      startedAt: importedAt,
+      failedCount: 0,
+      restoreSignature: getRestoreSnapshotSignature(importedRecords)
+    })
     setLastCloudFetchAt(Date.now())
     setLastCloudCursorAt(0)
     return { success: true, message: '恢复成功' }
@@ -1355,6 +1864,7 @@ module.exports = {
   addRecord,
   getTodayRecords,
   getAllRecords,
+  getHistoryRecordsPage,
   deleteRecord,
   updateRecord,
   getRecordById,

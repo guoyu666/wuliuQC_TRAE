@@ -59,6 +59,7 @@
         <view class="sync-desc" wx:elif="{{syncStatus.authStatus === 'checking'}}">正在确认微信账号和云同步状态</view>
         <view class="sync-desc" wx:elif="{{syncStatus.authStatus === 'cloudUnavailable'}}">已授权微信账号，云同步暂不可用</view>
         <view class="sync-desc" wx:elif="{{syncStatus.pendingCloudReplace}}">备份恢复待上传到云端</view>
+        <view class="sync-desc" wx:elif="{{syncStatus.lastSyncStatus === 'partial'}}">部分同步已完成，剩余 {{syncStatus.lastFailedCount}} 条可重试</view>
         <view class="sync-desc" wx:else>有本地变更等待同步</view>
         <view class="sync-time">上次同步：{{syncStatus.lastSyncText}}</view>
       </view>
@@ -69,6 +70,7 @@
       <view class="sync-chip pending">待同步 {{syncStatus.unsynced}}</view>
       <view class="sync-chip delete" wx:if="{{syncStatus.pendingDeletes > 0}}">待删除 {{syncStatus.pendingDeletes}}</view>
       <view class="sync-chip restore" wx:if="{{syncStatus.pendingCloudReplace}}">恢复待上传</view>
+      <view class="sync-chip delete" wx:if="{{syncStatus.lastSyncStatus === 'partial'}}">部分失败 {{syncStatus.lastFailedCount}}</view>
     </view>
     <view class="sync-error" wx:if="{{syncStatus.pendingCloudReplaceFailedCount > 0}}">
       失败 {{syncStatus.pendingCloudReplaceFailedCount}} 次{{syncStatus.pendingCloudReplaceLastError ? '：' + syncStatus.pendingCloudReplaceLastError : ''}}
@@ -144,7 +146,7 @@
     </view>
   </view>
 
-  <view class="loading-more" wx:if="{{hasMore}}">
+  <view class="loading-more" wx:if="{{isLoadingMore}}">
     <view class="loading-text">加载中...</view>
   </view>
 
