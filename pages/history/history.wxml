@@ -155,7 +155,7 @@
   </view>
 
   <view class="modal-mask" wx:if="{{showExportModal}}" bindtap="hideExportModal"></view>
-  <view class="modal-content" wx:if="{{showExportModal}}">
+  <form class="modal-content" wx:if="{{showExportModal}}" bindsubmit="exportRecords">
     <view class="modal-header">导出历史记录</view>
     <view class="modal-body">
       <view class="date-range">
@@ -172,6 +172,24 @@
           </picker>
         </view>
       </view>
+      <view class="export-filename-group">
+        <view class="export-filename-label">文件名</view>
+        <view class="export-filename-field">
+          <input
+            class="export-filename-input"
+            name="exportFileName"
+            value="{{exportFileName}}"
+            placeholder="请输入文件名"
+            maxlength="80"
+            confirm-type="done"
+            bindinput="onExportFileNameInput"
+            bindblur="normalizeExportFileName"
+            bindconfirm="normalizeExportFileName"
+          />
+          <text class="export-filename-extension">.xlsx</text>
+        </view>
+        <view class="export-filename-hint">可手动修改，无需输入 .xlsx 后缀</view>
+      </view>
       <view class="export-preview" wx:if="{{exportRecords.length > 0}}">
         <view class="preview-title">将导出 {{exportRecords.length}} 条记录为 Excel 格式</view>
         <view class="preview-stats">
@@ -187,9 +205,9 @@
     </view>
     <view class="modal-footer">
       <view class="modal-btn cancel" bindtap="hideExportModal">取消</view>
-      <view class="modal-btn confirm excel-btn" bindtap="exportRecords">导出 Excel</view>
+      <button class="modal-btn confirm excel-btn" form-type="submit">导出 Excel</button>
     </view>
-  </view>
+  </form>
 
   <view class="modal-mask" wx:if="{{showDataModal}}" bindtap="hideDataModal"></view>
   <view class="modal-content" wx:if="{{showDataModal}}">

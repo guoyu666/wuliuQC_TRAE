@@ -33,6 +33,7 @@ Page({
     editRemark: '',
     startDate: '',
     endDate: '',
+    exportFileName: '',
     exportRecords: [],
     exportSourceRecords: [],
     exportStats: {
@@ -480,10 +481,12 @@ Page({
       }
 
       const dates = records.map(r => r.date).filter(Boolean).sort()
+      const defaultFileName = `records_${util.formatDate(new Date()).replace(/-/g, '')}`
       this.setData({
         showExportModal: true,
         startDate: dates[0] || '',
         endDate: dates[dates.length - 1] || '',
+        exportFileName: defaultFileName,
         exportSourceRecords: records,
         exportRecords: records,
         exportStats: recordUtils.calculateStats(records)
@@ -509,6 +512,7 @@ Page({
       showExportModal: false,
       startDate: '',
       endDate: '',
+      exportFileName: '',
       exportSourceRecords: [],
       exportRecords: [],
       exportStats: { blueOut: 0, blueIn: 0, redOut: 0, redIn: 0 }
@@ -637,6 +641,27 @@ Page({
     this.filterExportRecords()
   },
 
+  onExportFileNameInput(e) {
+    this.setData({ exportFileName: e.detail.value })
+  },
+
+  normalizeExportFileName() {
+    const defaultFileName = `records_${util.formatDate(new Date()).replace(/-/g, '')}`
+    const normalized = fileExport.normalizeFilename(this.data.exportFileName, {
+      extension: 'xlsx',
+      fallback: defaultFileName
+    })
+    this.setData({ exportFileName: normalized.slice(0, -5) })
+  },
+
+  getExportFileName(inputValue = this.data.exportFileName) {
+    const defaultFileName = `records_${util.formatDate(new Date()).replace(/-/g, '')}`
+    return fileExport.normalizeFilename(inputValue, {
+      extension: 'xlsx',
+      fallback: defaultFileName
+    })
+  },
+
   filterExportRecords() {
     const { exportSourceRecords, startDate, endDate } = this.data
     if (!startDate || !endDate) return
@@ -652,8 +677,14 @@ Page({
     })
   },
 
-  exportRecords() {
+  exportRecords(e) {
     const { exportRecords } = this.data
+    const formValue = e && e.detail && e.detail.value
+    const submittedFileName = formValue && Object.prototype.hasOwnProperty.call(formValue, 'exportFileName')
+      ? formValue.exportFileName
+      : this.data.exportFileName
+    const filename = this.getExportFileName(submittedFileName)
+    this.setData({ exportFileName: filename.slice(0, -5) })
 
     if (exportRecords.length === 0) {
       wx.showToast({
@@ -670,17 +701,17 @@ Page({
         confirmText: '继续导出',
         success: (res) => {
           if (res.confirm) {
-            this.generateExcelFile(exportRecords)
+            this.generateExcelFile(exportRecords, filename)
           }
         }
       })
       return
     }
 
-    this.generateExcelFile(exportRecords)
+    this.generateExcelFile(exportRecords, filename)
   },
 
-  generateExcelFile(records) {
+  generateExcelFile(records, filename) {
     wx.showLoading({ title: '生成中...' })
     let excelContent
     try {
@@ -691,15 +722,12 @@ Page({
       return
     }
 
-    const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-    const filename = `records_${timestamp}.xlsx`
-
     fileExport.writeAndOpen({
       filename,
       data: excelContent,
       fileType: 'xlsx',
-      successTitle: 'Excel已生成',
-      openFailContent: 'Excel 文件已生成，但当前设备无法直接打开。可稍后在聊天或文件中转发该文件。',
+      successTitle: '自定义Excel已生成',
+      openFailContent: `${filename} 已生成，但当前设备无法直接打开。可稍后在聊天或文件中转发该文件。`,
       writeFailTitle: '导出失败'
     }).then(result => {
       wx.hideLoading()
