@@ -6,6 +6,7 @@ const backup = require('./backup.js')
 
 let openid = null
 let isCloudEnabled = false
+let sessionLoginActive = false
 let syncRecordsPromise = null
 let recordMutationQueue = Promise.resolve()
 const CLOUD_FUNCTION_NAME = config.cloud.syncFunctionName
@@ -54,7 +55,7 @@ function getScopedStorageKey(key) {
     return key
   }
 
-  const accountId = openid || storage.get(ACTIVE_OPENID_KEY, '')
+  const accountId = sessionLoginActive ? openid : ''
   return accountId ? `user:${accountId}:${key}` : key
 }
 
@@ -521,15 +522,13 @@ function buildCloudUpdateData(source, includeCreateTime = false) {
 
 function setOpenid(id) {
   openid = id
+  sessionLoginActive = !!id
   rawSetStorageSync('openid', id)
   rawSetStorageSync(ACTIVE_OPENID_KEY, id)
 }
 
 function getOpenid() {
-  if (!openid) {
-    openid = rawGetStorageSync('openid', '') || rawGetStorageSync(ACTIVE_OPENID_KEY, '')
-  }
-  return openid
+  return sessionLoginActive ? openid : null
 }
 
 function isLoggedIn() {
@@ -538,6 +537,9 @@ function isLoggedIn() {
 
 function setCloudEnabled(enabled) {
   isCloudEnabled = enabled
+  if (enabled && openid) {
+    sessionLoginActive = true
+  }
   authState = enabled
     ? AUTH_STATUS.AUTHORIZED
     : (hasAuthorizedLogin() ? AUTH_STATUS.CLOUD_UNAVAILABLE : AUTH_STATUS.UNAUTHORIZED)
@@ -545,24 +547,16 @@ function setCloudEnabled(enabled) {
 }
 
 function getCloudEnabled() {
-  const stored = rawGetStorageSync('cloudEnabled', false)
-  const storedOpenid = rawGetStorageSync('openid', '') || rawGetStorageSync(ACTIVE_OPENID_KEY, '')
-  if (!stored || !storedOpenid) {
+  if (!sessionLoginActive || !openid) {
     isCloudEnabled = false
-    authState = storedOpenid ? AUTH_STATUS.CLOUD_UNAVAILABLE : AUTH_STATUS.UNAUTHORIZED
+    authState = AUTH_STATUS.UNAUTHORIZED
     return false
   }
-
-  openid = storedOpenid
-  if (authState === AUTH_STATUS.UNAUTHORIZED) {
-    authState = AUTH_STATUS.CHECKING
-  }
-  rawSetStorageSync(ACTIVE_OPENID_KEY, storedOpenid)
   return authState === AUTH_STATUS.AUTHORIZED && isCloudEnabled
 }
 
 function hasAuthorizedLogin() {
-  return !!(rawGetStorageSync('openid', '') || rawGetStorageSync(ACTIVE_OPENID_KEY, ''))
+  return sessionLoginActive && !!openid
 }
 
 function getAuthStatus() {
@@ -577,18 +571,12 @@ function getAuthStatus() {
 }
 
 function restoreLoginState() {
-  if (!hasAuthorizedLogin()) {
-    isCloudEnabled = false
-    openid = null
-    return false
-  }
-
-  openid = rawGetStorageSync('openid', '') || rawGetStorageSync(ACTIVE_OPENID_KEY, '')
-  rawSetStorageSync('openid', openid)
+  sessionLoginActive = false
+  openid = null
   isCloudEnabled = false
-  authState = AUTH_STATUS.CHECKING
-  rawSetStorageSync(ACTIVE_OPENID_KEY, openid)
-  return true
+  authState = AUTH_STATUS.UNAUTHORIZED
+  syncRecordsPromise = null
+  return false
 }
 
 function saveUserProfile(userInfo = {}) {
@@ -607,6 +595,101 @@ function getUserProfile() {
 
 function clearUserProfile() {
   safeSetStorageSync(USER_PROFILE_KEY, null)
+}
+
+function captureGuestSessionData() {
+  return {
+    records: rawGetStorageSync('records', []),
+    routes: rawGetStorageSync('routes', []),
+    plates: rawGetStorageSync('plates', []),
+    routesMeta: rawGetStorageSync(ROUTES_META_KEY, {}),
+    platesMeta: rawGetStorageSync(PLATES_META_KEY, {}),
+    pendingCloudReplace: rawGetStorageSync(CLOUD_REPLACE_KEY, null)
+  }
+}
+
+function clearGuestSessionData() {
+  return rawSetStorageSync('records', []) &&
+    rawSetStorageSync('routes', []) &&
+    rawSetStorageSync('plates', []) &&
+    rawSetStorageSync(ROUTES_META_KEY, {}) &&
+    rawSetStorageSync(PLATES_META_KEY, {}) &&
+    rawSetStorageSync(CLOUD_REPLACE_KEY, null) &&
+    rawSetStorageSync(CLOUD_CACHE_KEY, 0) &&
+    rawSetStorageSync(CLOUD_CURSOR_KEY, 0) &&
+    rawSetStorageSync(CLOUD_GENERATION_KEY, '') &&
+    rawSetStorageSync(LAST_SYNC_ERROR_KEY, '') &&
+    rawSetStorageSync(LAST_SYNC_META_KEY, {}) &&
+    rawSetStorageSync(USER_PROFILE_KEY, null)
+}
+
+function transferGuestSessionDataToAccount(snapshot = {}) {
+  const guestRecords = Array.isArray(snapshot.records) ? snapshot.records.filter(Boolean) : []
+  const guestRoutes = normalizeNameList(snapshot.routes)
+  const guestPlates = normalizeNameList(snapshot.plates)
+  const pendingRestore = snapshot.pendingCloudReplace && snapshot.pendingCloudReplace.pending
+
+  if (!guestRecords.length && !guestRoutes.length && !guestPlates.length && !pendingRestore) {
+    return true
+  }
+
+  let nextRecords
+  if (pendingRestore) {
+    nextRecords = guestRecords.map(record => normalizeRecord({
+      ...record,
+      generation: '',
+      serverRevision: 0,
+      localMutationId: record.localMutationId || createMutationId(),
+      synced: false
+    }, false))
+  } else {
+    const accountRecords = getStoredRecords()
+    const recordMap = new Map(accountRecords.map(record => [record.id || record._id, record]))
+    guestRecords.forEach(record => {
+      const key = record.id || record._id
+      if (!key) return
+      const current = recordMap.get(key)
+      const shouldUseGuest = !current || (
+        record.synced === false && getRecordVersion(record) >= getRecordVersion(current)
+      )
+      if (!shouldUseGuest) return
+      recordMap.set(key, normalizeRecord({
+        ...record,
+        id: record.id || record._id,
+        generation: '',
+        serverRevision: 0,
+        localMutationId: record.localMutationId || createMutationId(),
+        synced: false
+      }, false))
+    })
+    nextRecords = sortRecords(Array.from(recordMap.values()))
+  }
+
+  const nextRoutes = pendingRestore
+    ? guestRoutes
+    : normalizeNameList([...getRoutes(), ...guestRoutes])
+  const nextPlates = pendingRestore
+    ? guestPlates
+    : normalizeNameList([...getPlates(), ...guestPlates])
+  const recordsSaved = saveStoredRecords(sortRecords(nextRecords))
+  const routesSaved = saveDictionaryState(
+    'routes',
+    ROUTES_META_KEY,
+    nextRoutes,
+    pendingRestore ? snapshot.routesMeta : getRoutesMeta()
+  )
+  const platesSaved = saveDictionaryState(
+    'plates',
+    PLATES_META_KEY,
+    nextPlates,
+    pendingRestore ? snapshot.platesMeta : getPlatesMeta()
+  )
+  const restoreSaved = !pendingRestore || safeSetStorageSync(CLOUD_REPLACE_KEY, snapshot.pendingCloudReplace)
+
+  if (!recordsSaved || !routesSaved || !platesSaved || !restoreSaved) {
+    return false
+  }
+  return clearGuestSessionData()
 }
 
 function claimLegacyDataForAccount() {
@@ -891,9 +974,8 @@ function migrateStorageIfNeeded() {
 }
 
 async function initCloud(userInfo = {}) {
-  if (hasAuthorizedLogin()) {
-    authState = AUTH_STATUS.CHECKING
-  }
+  authState = AUTH_STATUS.CHECKING
+  const guestSessionData = captureGuestSessionData()
 
   try {
     const result = await wx.cloud.callFunction({
@@ -905,11 +987,15 @@ async function initCloud(userInfo = {}) {
 
     if (result.result && result.result.success) {
       openid = result.result.openid
+      sessionLoginActive = true
       isCloudEnabled = false
       authState = AUTH_STATUS.CHECKING
       rawSetStorageSync('openid', openid)
       rawSetStorageSync(ACTIVE_OPENID_KEY, openid)
       const profile = saveUserProfile(result.result.userInfo || userInfo)
+      if (!transferGuestSessionDataToAccount(guestSessionData)) {
+        throw new Error('游客数据转入微信账号失败，请清理存储空间后重试')
+      }
       claimLegacyDataForAccount()
       migrateStorageIfNeeded()
 
@@ -941,7 +1027,9 @@ async function initCloud(userInfo = {}) {
     }
 
     isCloudEnabled = false
-    authState = hasAuthorizedLogin() ? AUTH_STATUS.CLOUD_UNAVAILABLE : AUTH_STATUS.UNAUTHORIZED
+    sessionLoginActive = false
+    openid = null
+    authState = AUTH_STATUS.UNAUTHORIZED
     rawSetStorageSync('cloudEnabled', false)
     return {
       success: false,
@@ -950,7 +1038,9 @@ async function initCloud(userInfo = {}) {
   } catch (err) {
     console.error('云登录失败', err)
     isCloudEnabled = false
-    authState = hasAuthorizedLogin() ? AUTH_STATUS.CLOUD_UNAVAILABLE : AUTH_STATUS.UNAUTHORIZED
+    sessionLoginActive = false
+    openid = null
+    authState = AUTH_STATUS.UNAUTHORIZED
     rawSetStorageSync('cloudEnabled', false)
     setLastSyncError(err.message)
     return {

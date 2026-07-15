@@ -17,13 +17,12 @@ App({
       traceUser: true
     })
 
+    db.restoreLoginState()
     db.migrateStorageIfNeeded()
-    if (!db.restoreLoginState()) {
-      this.notifySyncReady({ success: true, message: '已进入本地体验模式', guestMode: true })
-      return
-    }
-
-    await this.syncCloudData(db.getUserProfile() || {})
+    this.globalData.openid = null
+    this.globalData.userInfo = null
+    this.globalData.isLoggedIn = false
+    this.notifySyncReady({ success: true, message: '已进入本地体验模式', guestMode: true })
   },
 
   onShow() {
