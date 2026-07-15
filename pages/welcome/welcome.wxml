@@ -34,9 +34,9 @@
     </view>
 
     <view class="login-card">
-      <view class="login-title">{{isAuthorized ? (isCheckingAuth ? '正在确认微信账号' : '已登录微信账号') : '微信账号登录同步'}}</view>
+      <view class="login-title">{{isAuthorized ? (isCheckingAuth ? '正在确认微信账号' : '已登录微信账号') : '先体验，后登录'}}</view>
       <view class="login-desc">
-        {{isAuthorized ? (isCheckingAuth ? '已识别当前微信账号，正在确认云同步状态' : (isCloudUnavailable ? '已识别当前微信账号，云同步暂不可用，可重试登录同步' : '将根据当前微信账号同步您的个人记录')) : '登录后可按微信账号同步线路、车牌和历史记录；头像昵称授权失败也不会影响同步'}}
+        {{isAuthorized ? (isCheckingAuth ? '已识别当前微信账号，正在确认云同步状态' : (isCloudUnavailable ? '已识别当前微信账号，云同步暂不可用，可手动重试' : '数据将按当前微信账号同步')) : '无需登录即可浏览、记录、查询和统计；体验后可自愿登录开启云同步'}}
       </view>
       <view class="user-row" wx:if="{{isAuthorized && userInfo}}">
         <image class="avatar" wx:if="{{userInfo.avatarUrl}}" src="{{userInfo.avatarUrl}}" mode="aspectFill"></image>
@@ -45,12 +45,18 @@
       </view>
     </view>
 
-    <button class="start-btn" loading="{{isLoading}}" disabled="{{isLoading}}" bindtap="loginWithWechat">
-      <text>{{isAuthorized ? (isCheckingAuth ? '继续确认同步' : (isCloudUnavailable ? '重试云同步' : '进入应用')) : '微信登录并同步'}}</text>
+    <button class="start-btn" bindtap="goToIndex">
+      <text>{{isAuthorized ? '返回使用' : '先体验功能'}}</text>
     </button>
 
+    <button class="login-sync-btn" loading="{{isLoading}}" disabled="{{isLoading}}" bindtap="loginWithWechat" wx:if="{{!isAuthorized || isCheckingAuth || isCloudUnavailable}}">
+      <text>{{isCheckingAuth ? '继续确认同步' : (isCloudUnavailable ? '重试云同步' : '登录并开启云同步')}}</text>
+    </button>
+
+    <view class="experience-tip" wx:if="{{!isAuthorized}}">登录完全自愿，不获取手机号、头像和昵称</view>
+
     <view class="privacy-tip" bindtap="showPrivacyInfo">
-      查看授权与数据说明
+      查看登录与数据说明
     </view>
   </view>
 </view>

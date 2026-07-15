@@ -42,17 +42,16 @@ Page({
     isDarkTheme: false,
     onlineCount: 0,
     onlineActiveWindowSeconds: 0,
-    onlineStatusReady: false
+    onlineStatusReady: false,
+    isGuest: true
   },
 
   onLoad() {
-    if (!db.hasAuthorizedLogin()) {
-      wx.redirectTo({ url: '/pages/welcome/welcome' })
-      return
-    }
-
     this.skipNextShowReload = true
-    this.setData({ isDarkTheme: theme.isDark })
+    this.setData({
+      isDarkTheme: theme.isDark,
+      isGuest: !db.hasAuthorizedLogin()
+    })
     
     const today = new Date()
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
@@ -73,11 +72,7 @@ Page({
   },
 
   onShow() {
-    if (!db.hasAuthorizedLogin()) {
-      wx.redirectTo({ url: '/pages/welcome/welcome' })
-      return
-    }
-
+    this.setData({ isGuest: !db.hasAuthorizedLogin() })
     this.refreshPickerOptions()
     this.refreshOnlinePresence()
     if (this.skipNextShowReload) {
@@ -605,6 +600,12 @@ Page({
   goToHistory() {
     wx.navigateTo({
       url: '/pages/history/history'
+    })
+  },
+
+  goToLogin() {
+    wx.navigateTo({
+      url: '/pages/welcome/welcome?from=experience'
     })
   },
 

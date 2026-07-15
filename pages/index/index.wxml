@@ -1,6 +1,10 @@
 <view class="container {{isDarkTheme ? 'dark-theme' : ''}}">
   <view class="header-bar">
-    <view class="online-pill {{onlineStatusReady ? 'ready' : ''}}">
+    <view class="guest-pill" wx:if="{{isGuest}}" bindtap="goToLogin">
+      <text class="guest-label">游客体验</text>
+      <text class="guest-action">登录同步</text>
+    </view>
+    <view class="online-pill {{onlineStatusReady ? 'ready' : ''}}" wx:else>
       <view class="online-dot"></view>
       <text class="online-label">实时在线</text>
       <text class="online-count">{{onlineStatusReady ? onlineCount : '--'}}</text>

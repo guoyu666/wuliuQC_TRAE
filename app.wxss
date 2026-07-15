@@ -108,6 +108,29 @@ page {
   color: var(--text-secondary);
 }
 
+.guest-pill {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  min-height: 58rpx;
+  padding: 0 20rpx;
+  border-radius: 999rpx;
+  background-color: var(--warning-bg);
+  border: 1rpx solid var(--warning-color);
+  box-shadow: var(--shadow-control);
+}
+
+.guest-label {
+  color: var(--text-secondary);
+  font-size: 24rpx;
+}
+
+.guest-action {
+  color: var(--warning-color-strong);
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
 .online-dot {
   width: 14rpx;
   height: 14rpx;

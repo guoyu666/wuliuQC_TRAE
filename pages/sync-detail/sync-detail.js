@@ -28,7 +28,7 @@ Page({
     if (this.data.isSyncing) return
 
     if (!db.hasAuthorizedLogin()) {
-      wx.showToast({ title: '请先微信授权', icon: 'none' })
+      wx.showToast({ title: '登录后可开启云同步', icon: 'none' })
       wx.redirectTo({ url: '/pages/welcome/welcome' })
       return
     }

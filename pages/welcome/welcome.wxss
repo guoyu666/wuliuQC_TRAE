@@ -199,6 +199,35 @@
   transform: scale(0.98);
 }
 
+.login-sync-btn {
+  margin-top: 20rpx;
+  padding: 24rpx 0;
+  color: #FFFFFF;
+  background: rgba(13, 71, 161, 0.5);
+  border: 2rpx solid rgba(255, 255, 255, 0.5);
+  border-radius: 50rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.login-sync-btn::after {
+  border: 0;
+}
+
+.login-sync-btn[disabled] {
+  opacity: 0.7;
+  color: #FFFFFF;
+}
+
+.experience-tip {
+  margin-top: 18rpx;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 22rpx;
+  line-height: 1.5;
+  text-align: center;
+}
+
 .privacy-tip {
   margin-top: 22rpx;
   color: rgba(255, 255, 255, 0.68);

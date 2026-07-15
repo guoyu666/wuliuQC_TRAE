@@ -29,15 +29,11 @@ Page({
     maxDaily: 1,
     maxMonthly: 1,
     animationData: null,
-    trendAnimationData: null
+    trendAnimationData: null,
+    isGuest: true
   },
 
   onLoad() {
-    if (!db.hasAuthorizedLogin()) {
-      wx.redirectTo({ url: '/pages/welcome/welcome' })
-      return
-    }
-
     const now = new Date()
     const year = now.getFullYear()
     const month = String(now.getMonth() + 1).padStart(2, '0')
@@ -46,30 +42,31 @@ Page({
       selectedMonth: `${year}-${month}`,
       selectedYear: year.toString(),
       routeList: ['全部', ...db.getRoutes()],
-      isDarkTheme: theme.isDark
+      isDarkTheme: theme.isDark,
+      isGuest: !db.hasAuthorizedLogin()
     }, () => {
       this.setupSyncRefresh()
     })
   },
 
   onShow() {
-    if (!db.hasAuthorizedLogin()) {
-      wx.redirectTo({ url: '/pages/welcome/welcome' })
-      return
-    }
-
     const routeList = ['全部', ...db.getRoutes()]
     const routeIndex = routeList.indexOf(this.data.selectedRoute || '全部')
     const forceRefresh = !this.hasLoadedData
 
     this.setData({
       isDarkTheme: theme.isDark,
+      isGuest: !db.hasAuthorizedLogin(),
       routeList,
       routeIndex: routeIndex >= 0 ? routeIndex : 0,
       selectedRoute: routeIndex > 0 ? routeList[routeIndex] : ''
     }, () => {
       this.loadData(forceRefresh)
     })
+  },
+
+  goToLogin() {
+    wx.navigateTo({ url: '/pages/welcome/welcome?from=experience' })
   },
 
   onUnload() {

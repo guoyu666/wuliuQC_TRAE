@@ -64,11 +64,6 @@ Page({
   },
 
   onLoad() {
-    if (!db.hasAuthorizedLogin()) {
-      wx.redirectTo({ url: '/pages/welcome/welcome' })
-      return
-    }
-
     this.skipNextShowReload = true
     this.setData({
       routeList: db.getRoutes(),
@@ -81,11 +76,6 @@ Page({
   },
 
   onShow() {
-    if (!db.hasAuthorizedLogin()) {
-      wx.redirectTo({ url: '/pages/welcome/welcome' })
-      return
-    }
-
     this.setData({
       isDarkTheme: theme.isDark,
       syncStatus: db.getSyncStatus()
@@ -161,6 +151,10 @@ Page({
 
   goToSyncDetail() {
     wx.navigateTo({ url: '/pages/sync-detail/sync-detail' })
+  },
+
+  goToLogin() {
+    wx.navigateTo({ url: '/pages/welcome/welcome?from=experience' })
   },
 
   retrySync() {

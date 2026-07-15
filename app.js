@@ -17,8 +17,9 @@ App({
       traceUser: true
     })
 
+    db.migrateStorageIfNeeded()
     if (!db.restoreLoginState()) {
-      this.notifySyncReady({ success: false, message: '等待微信授权登录', needLogin: true })
+      this.notifySyncReady({ success: true, message: '已进入本地体验模式', guestMode: true })
       return
     }
 

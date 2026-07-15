@@ -9,7 +9,8 @@ Page({
     userInfo: null
   },
 
-  onLoad() {
+  onLoad(options = {}) {
+    this.returnToPrevious = options.from === 'experience'
     this.refreshLoginState()
   },
 
@@ -40,20 +41,7 @@ Page({
       return
     }
 
-    if (!wx.getUserProfile) {
-      this.doWechatLogin({})
-      return
-    }
-
-    wx.getUserProfile({
-      desc: '用于展示账号信息并同步您的收发记录',
-      success: (res) => {
-        this.doWechatLogin(res.userInfo || {})
-      },
-      fail: () => {
-        this.doWechatLogin({})
-      }
-    })
+    this.doWechatLogin({})
   },
 
   doWechatLogin(userInfo) {
@@ -98,16 +86,19 @@ Page({
 
   showPrivacyInfo() {
     wx.showModal({
-      title: '授权与数据说明',
-      content: '小程序会使用微信账号标识区分您的个人数据；头像和昵称仅用于展示当前账号。您的收发记录会按微信账号同步到云端，不会与其他微信账号混用。',
+      title: '登录与数据说明',
+      content: '无需登录即可浏览和使用本地功能。只有您主动点击“登录并开启云同步”后，小程序才会使用微信账号标识区分个人数据。登录同步不获取手机号、头像或昵称。',
       showCancel: false,
       confirmText: '知道了'
     })
   },
 
   goToIndex() {
-    wx.redirectTo({
-      url: '/pages/index/index'
-    })
+    const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+    if (this.returnToPrevious && pages.length > 1) {
+      wx.navigateBack()
+      return
+    }
+    wx.redirectTo({ url: '/pages/index/index' })
   }
 })

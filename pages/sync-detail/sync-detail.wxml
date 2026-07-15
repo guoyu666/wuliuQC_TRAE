@@ -3,10 +3,10 @@
     <view class="status-top">
       <view>
         <view class="status-title">
-          {{details.authStatus === 'authorized' ? '云同步正常' : (details.authStatus === 'checking' ? '正在确认云同步' : (details.authStatus === 'cloudUnavailable' ? '云同步暂不可用' : '未授权微信账号'))}}
+          {{details.authStatus === 'authorized' ? '云同步正常' : (details.authStatus === 'checking' ? '正在确认云同步' : (details.authStatus === 'cloudUnavailable' ? '云同步暂不可用' : '当前为游客体验'))}}
         </view>
         <view class="status-desc">
-          {{details.authStatus === 'authorized' ? '数据会按当前微信账号同步' : (details.authStatus === 'checking' ? '已识别微信账号，正在确认云端同步状态' : (details.authStatus === 'cloudUnavailable' ? '已识别微信账号，本地数据会等待下次同步' : '授权后才能同步自己的云端数据'))}}
+          {{details.authStatus === 'authorized' ? '数据会按当前微信账号同步' : (details.authStatus === 'checking' ? '已识别微信账号，正在确认云端同步状态' : (details.authStatus === 'cloudUnavailable' ? '已识别微信账号，本地数据会等待下次同步' : '可继续本地使用，也可自愿登录开启云同步'))}}
         </view>
       </view>
       <view class="status-dot"></view>
@@ -16,7 +16,7 @@
       <view class="avatar placeholder" wx:else>微</view>
       <view class="account-info">
         <view class="account-name">{{details.nickName}}</view>
-        <view class="account-id">账号标识：{{details.openid || '未授权'}}</view>
+        <view class="account-id">账号标识：{{details.openid || '游客本地模式'}}</view>
       </view>
     </view>
   </view>
@@ -110,7 +110,7 @@
   </view>
 
   <view class="action-row">
-    <view class="btn-secondary action-btn" bindtap="goLogin" wx:if="{{details.authStatus === 'unauthorized'}}">去授权</view>
+    <view class="btn-secondary action-btn" bindtap="goLogin" wx:if="{{details.authStatus === 'unauthorized'}}">登录并开启同步</view>
     <view class="btn-primary action-btn" bindtap="retrySync">{{isSyncing ? '同步中...' : '重试同步'}}</view>
   </view>
 </view>

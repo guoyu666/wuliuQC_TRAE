@@ -1,5 +1,10 @@
 <view class="container {{isDarkTheme ? 'dark-theme' : ''}}">
   <view class="header-bar">
+    <view class="guest-pill" wx:if="{{isGuest}}" bindtap="goToLogin">
+      <text class="guest-label">游客体验</text>
+      <text class="guest-action">登录同步</text>
+    </view>
+    <view wx:else></view>
     <view class="theme-toggle" bindtap="toggleTheme">
       <text>{{isDarkTheme ? '☀️' : '🌙'}}</text>
     </view>
