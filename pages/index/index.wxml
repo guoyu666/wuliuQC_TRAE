@@ -34,10 +34,10 @@
   </view>
 
   <view class="center-send-card card">
-    <view class="section-title">物流中心发出框子数量</view>
+    <view class="section-title">物流中心发出周转筐数量</view>
     <view class="send-input-row">
       <view class="send-input-item">
-        <view class="send-label blue">蓝色框子</view>
+        <view class="send-label blue">蓝色周转筐</view>
         <view class="send-stepper">
           <view class="stepper-btn" bindtap="adjustSendValue" data-field="sendBlueOut" data-delta="-1">-</view>
           <input class="stepper-input" type="number" value="{{sendBlueOut}}" bindinput="onSendBlueOutChange" />
@@ -45,7 +45,7 @@
         </view>
       </view>
       <view class="send-input-item">
-        <view class="send-label red">红色框子</view>
+        <view class="send-label red">红色周转筐</view>
         <view class="send-stepper">
           <view class="stepper-btn" bindtap="adjustSendValue" data-field="sendRedOut" data-delta="-1">-</view>
           <input class="stepper-input" type="number" value="{{sendRedOut}}" bindinput="onSendRedOutChange" />
@@ -56,24 +56,24 @@
   </view>
 
   <view class="header-card card" animation="{{animationData}}">
-    <view class="date-label">当日收发汇总</view>
+    <view class="date-label">当日周转筐收发汇总</view>
     <view class="summary-row">
       <view class="summary-item blue">
-        <view class="summary-label">蓝色发出</view>
+        <view class="summary-label">蓝色周转筐发出</view>
         <view class="summary-value">{{todayBlueOut}}</view>
       </view>
       <view class="summary-item blue">
-        <view class="summary-label">蓝色收回</view>
+        <view class="summary-label">蓝色周转筐收回</view>
         <view class="summary-value">{{todayBlueIn}}</view>
       </view>
     </view>
     <view class="summary-row">
       <view class="summary-item red">
-        <view class="summary-label">红色发出</view>
+        <view class="summary-label">红色周转筐发出</view>
         <view class="summary-value">{{todayRedOut}}</view>
       </view>
       <view class="summary-item red">
-        <view class="summary-label">红色收回</view>
+        <view class="summary-label">红色周转筐收回</view>
         <view class="summary-value">{{todayRedIn}}</view>
       </view>
     </view>
@@ -119,7 +119,7 @@
             <view class="bar blue-in" style="height: {{barBlueIn}}rpx;"></view>
             <view class="bar-value-bottom">{{todayBlueIn}}</view>
           </view>
-          <view class="bar-label">蓝色框子</view>
+          <view class="bar-label">蓝色周转筐</view>
         </view>
         <view class="chart-item">
           <view class="bar-wrapper">
@@ -128,7 +128,7 @@
             <view class="bar red-in" style="height: {{barRedIn}}rpx;"></view>
             <view class="bar-value-bottom">{{todayRedIn}}</view>
           </view>
-          <view class="bar-label">红色框子</view>
+          <view class="bar-label">红色周转筐</view>
         </view>
       </view>
     </view>
@@ -184,7 +184,7 @@
 
     <view class="collapse-section">
       <view class="collapse-header" bindtap="toggleBlueSection">
-        <view class="collapse-title blue-title">蓝色框子</view>
+        <view class="collapse-title blue-title">蓝色周转筐</view>
         <view class="collapse-arrow {{showBlueSection ? 'expanded' : ''}}">▼</view>
       </view>
       <view class="collapse-content {{showBlueSection ? 'expanded' : ''}}">
@@ -219,7 +219,7 @@
 
     <view class="collapse-section">
       <view class="collapse-header" bindtap="toggleRedSection">
-        <view class="collapse-title red-title">红色框子</view>
+        <view class="collapse-title red-title">红色周转筐</view>
         <view class="collapse-arrow {{showRedSection ? 'expanded' : ''}}">▼</view>
       </view>
       <view class="collapse-content {{showRedSection ? 'expanded' : ''}}">

@@ -10,7 +10,7 @@
       <view class="logo-wrapper">
         <view class="logo">📦</view>
       </view>
-      <view class="app-name">烟框收发记录</view>
+      <view class="app-name">周转筐收发记录</view>
       <view class="app-desc">库房管理更轻松</view>
     </view>
 
