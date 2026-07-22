@@ -432,6 +432,16 @@ Page({
   saveData() {
     const { editRecordId, editRouteName, editPlateNumber, editSendBlueOut, editSendRedOut, editBlueOut, editBlueIn, editRedOut, editRedIn, editRemark } = this.data
 
+    if (!editRouteName.trim()) {
+      wx.showToast({ title: '请输入线路名称', icon: 'none' })
+      return
+    }
+
+    if (!editPlateNumber.trim()) {
+      wx.showToast({ title: '请输入车牌号', icon: 'none' })
+      return
+    }
+
     db.updateRecord(editRecordId, {
       routeName: editRouteName.trim(),
       plateNumber: editPlateNumber.trim(),

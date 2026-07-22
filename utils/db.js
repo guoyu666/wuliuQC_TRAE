@@ -3,12 +3,15 @@ const config = require('./config.js')
 const storage = require('./storage.js')
 const exporter = require('./exporter.js')
 const backup = require('./backup.js')
+const recordValidation = require('./recordValidation.js')
+const storageTransaction = require('./storageTransaction.js')
 
 let openid = null
 let isCloudEnabled = false
 let sessionLoginActive = false
 let syncRecordsPromise = null
 let recordMutationQueue = Promise.resolve()
+let dictionarySyncQueue = Promise.resolve()
 const CLOUD_FUNCTION_NAME = config.cloud.syncFunctionName
 const CLOUD_CACHE_KEY = 'lastCloudFetchAt'
 const CLOUD_CURSOR_KEY = 'lastCloudCursorAt'
@@ -73,6 +76,17 @@ function safeGetStorageSync(key, fallback) {
 
 function safeSetStorageSync(key, value) {
   return storage.set(getScopedStorageKey(key), value)
+}
+
+function saveScopedEntriesAtomically(entries) {
+  return storageTransaction.commitAtomically({
+    read(key, fallback) {
+      return safeGetStorageSync(key, fallback)
+    },
+    write(key, value) {
+      return safeSetStorageSync(key, value)
+    }
+  }, entries)
 }
 
 function setLastSyncError(message = '') {
@@ -171,7 +185,7 @@ function enqueueRecordMutation(mutator) {
     const result = mutator(currentRecords.slice()) || {}
     const nextRecords = Array.isArray(result.records) ? result.records : currentRecords
 
-    if (!saveStoredRecords(nextRecords)) {
+    if (!result.skipRecordWrite && !saveStoredRecords(nextRecords)) {
       return {
         ...result,
         success: false,
@@ -789,7 +803,10 @@ function getVisibleNamesFromMeta(meta) {
 function saveDictionaryState(listKey, metaKey, list, meta) {
   const visibleList = normalizeNameList(list)
   const normalizedMeta = normalizeDictionaryMeta(meta, visibleList)
-  return safeSetStorageSync(listKey, visibleList) && safeSetStorageSync(metaKey, normalizedMeta)
+  return saveScopedEntriesAtomically([
+    { key: listKey, value: visibleList, fallback: [] },
+    { key: metaKey, value: normalizedMeta, fallback: {} }
+  ])
 }
 
 function markDictionaryDeleted(listKey, metaKey, name) {
@@ -854,57 +871,46 @@ function hasLocalSyncWork(records = getStoredRecords()) {
 }
 
 function syncDictionariesToCloud(options = {}) {
-  if (!isCloudEnabled || !openid) {
-    return Promise.resolve({ success: false, message: '未登录云端' })
-  }
+  const task = dictionarySyncQueue.catch(() => {}).then(async () => {
+    if (!isCloudEnabled || !openid) {
+      return { success: false, message: '未登录云端' }
+    }
 
-  const {
-    mode = 'merge',
-    deletedRoutes = [],
-    deletedPlates = []
-  } = options
+    const {
+      mode = 'merge',
+      deletedRoutes = [],
+      deletedPlates = []
+    } = options
 
-  return callSyncFunction({
-    action: 'syncMeta',
-    mode,
-    routes: getRoutes(),
-    plates: getPlates(),
-    routesMeta: getRoutesMeta(),
-    platesMeta: getPlatesMeta(),
-    deletedRoutes,
-    deletedPlates
-  }).catch(err => {
-    console.error('线路车牌同步失败', err)
-    setLastSyncError(err.message)
-    return { success: false, message: err.message }
+    try {
+      const result = await callSyncFunction({
+        action: 'syncMeta',
+        mode,
+        routes: getRoutes(),
+        plates: getPlates(),
+        routesMeta: getRoutesMeta(),
+        platesMeta: getPlatesMeta(),
+        deletedRoutes,
+        deletedPlates
+      })
+      if (result.success) {
+        saveDictionaryState('routes', ROUTES_META_KEY, result.routes || [], result.routesMeta || {})
+        saveDictionaryState('plates', PLATES_META_KEY, result.plates || [], result.platesMeta || {})
+      }
+      return result
+    } catch (err) {
+      console.error('线路车牌同步失败', err)
+      setLastSyncError(err.message)
+      return { success: false, message: err.message }
+    }
   })
+
+  dictionarySyncQueue = task
+  return task
 }
 
-async function refreshDictionariesFromCloud() {
-  if (!isCloudEnabled || !openid) {
-    return { success: false, message: '未登录云端' }
-  }
-
-  try {
-    const result = await callSyncFunction({
-      action: 'syncMeta',
-      mode: 'merge',
-      routes: getRoutes(),
-      plates: getPlates(),
-      routesMeta: getRoutesMeta(),
-      platesMeta: getPlatesMeta()
-    })
-
-    if (result.success) {
-      saveDictionaryState('routes', ROUTES_META_KEY, result.routes || [], result.routesMeta || {})
-      saveDictionaryState('plates', PLATES_META_KEY, result.plates || [], result.platesMeta || {})
-    }
-    return result
-  } catch (err) {
-    console.error('线路车牌刷新失败', err)
-    setLastSyncError(err.message)
-    return { success: false, message: err.message }
-  }
+function refreshDictionariesFromCloud() {
+  return syncDictionariesToCloud()
 }
 
 async function refreshOnlinePresence() {
@@ -1051,9 +1057,14 @@ async function initCloud(userInfo = {}) {
 }
 
 async function addRecord(record) {
+  const validation = recordValidation.validateRecord(record)
+  if (!validation.success) {
+    return validation
+  }
+
   const mutationId = createMutationId()
   const newRecord = {
-    ...record,
+    ...validation.record,
     id: createRecordId(),
     createTime: util.formatTime(new Date()),
     updatedAt: Date.now(),
@@ -1340,27 +1351,37 @@ async function deleteRecord(id) {
 }
 
 async function updateRecord(id, updates) {
+  const recordId = String(id || '').trim()
+  if (!recordId) {
+    return { success: false, message: '记录ID不能为空' }
+  }
+
   const mutationId = createMutationId()
   const localResult = await enqueueRecordMutation(records => {
     let updatedRecord = null
+    let validationError = ''
     const nextRecords = records.map(current => {
-      if (current.id !== id) return current
+      if (current.id !== recordId) return current
+      const validation = recordValidation.validateRecord({ ...current, ...updates, id: recordId })
+      if (!validation.success) {
+        validationError = validation.message
+        return current
+      }
       updatedRecord = {
-        ...current,
-        ...updates,
+        ...validation.record,
         updatedAt: Date.now(),
         localMutationId: mutationId,
         synced: false
       }
       return updatedRecord
     })
-    return { records: nextRecords, updatedRecord }
+    return { records: nextRecords, updatedRecord, validationError }
   })
   if (!localResult.success) {
     return localResult
   }
   if (!localResult.updatedRecord) {
-    return { success: false, message: '记录不存在' }
+    return { success: false, message: localResult.validationError || '记录不存在' }
   }
 
   if (isCloudEnabled && openid) {
@@ -1908,34 +1929,58 @@ async function importAllData(jsonStr) {
   try {
     const data = parsed.data
     const importedAt = Date.now()
-    const importedRecords = (data.records || []).map((record, index) => normalizeRecord({
-      ...record,
-      id: record.id || record._id || `${importedAt}-${index}`,
-      updatedAt: importedAt,
-      serverRevision: 0,
-      generation: '',
-      localMutationId: createMutationId(),
-      synced: false
-    }, false))
-    const stored = await enqueueRecordMutation(() => ({
-      records: sortRecords(importedRecords)
-    }))
-    const ok = stored.success &&
-      saveDictionaryState('routes', ROUTES_META_KEY, data.routes || [], data.routesMeta || {}) &&
-      saveDictionaryState('plates', PLATES_META_KEY, data.plates || [], data.platesMeta || {})
-    if (!ok) {
-      return { success: false, message: '本地存储失败，请清理空间后重试' }
-    }
-    setPendingCloudReplace(true, {
+    const importedRecords = (data.records || []).map((record, index) => {
+      const validation = recordValidation.validateRecord({
+        ...record,
+        id: record.id || record._id || `${importedAt}-${index}`
+      }, { requireId: true })
+      if (!validation.success) {
+        throw new Error(`第 ${index + 1} 条记录${validation.message}`)
+      }
+      return normalizeRecord({
+        ...validation.record,
+        updatedAt: importedAt,
+        serverRevision: 0,
+        generation: '',
+        localMutationId: createMutationId(),
+        synced: false
+      }, false)
+    })
+    const importedRoutes = normalizeNameList(data.routes || [])
+    const importedPlates = normalizeNameList(data.plates || [])
+    const importedRoutesMeta = normalizeDictionaryMeta(data.routesMeta || {}, importedRoutes)
+    const importedPlatesMeta = normalizeDictionaryMeta(data.platesMeta || {}, importedPlates)
+    const pendingRestore = {
+      pending: true,
       startedAt: importedAt,
       failedCount: 0,
+      lastError: '',
       restoreSignature: getRestoreSnapshotSignature(importedRecords)
+    }
+    const stored = await enqueueRecordMutation(() => {
+      const ok = saveScopedEntriesAtomically([
+        { key: 'records', value: sortRecords(importedRecords), fallback: [] },
+        { key: 'routes', value: importedRoutes, fallback: [] },
+        { key: ROUTES_META_KEY, value: importedRoutesMeta, fallback: {} },
+        { key: 'plates', value: importedPlates, fallback: [] },
+        { key: PLATES_META_KEY, value: importedPlatesMeta, fallback: {} },
+        { key: CLOUD_REPLACE_KEY, value: pendingRestore, fallback: null },
+        { key: CLOUD_CACHE_KEY, value: importedAt, fallback: 0 },
+        { key: CLOUD_CURSOR_KEY, value: 0, fallback: 0 }
+      ])
+      return {
+        records: sortRecords(importedRecords),
+        skipRecordWrite: true,
+        success: ok,
+        message: ok ? '' : '本地存储失败，请清理空间后重试'
+      }
     })
-    setLastCloudFetchAt(Date.now())
-    setLastCloudCursorAt(0)
+    if (!stored.success) {
+      return { success: false, message: '本地存储失败，请清理空间后重试' }
+    }
     return { success: true, message: '恢复成功' }
   } catch (e) {
-    return { success: false, message: '解析备份文件失败' }
+    return { success: false, message: e.message || '解析备份文件失败' }
   }
 }
 

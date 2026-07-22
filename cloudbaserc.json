@@ -1,0 +1,80 @@
+{
+  "$schema": "https://static.cloudbase.net/cli/cloudbaserc.schema.json",
+  "version": "2.0",
+  "envId": "cloud1-9gvo70lwa48bb03a",
+  "framework": {
+    "plugins": {
+      "database": {
+        "use": "@cloudbase/framework-plugin-database",
+        "inputs": {
+          "collections": [
+            {
+              "collectionName": "records",
+              "description": "周转筐收发记录",
+              "createIndexes": [
+                {
+                  "name": "records_owner_id_cursor",
+                  "unique": false,
+                  "keys": [
+                    { "name": "_openid", "direction": "1" },
+                    { "name": "_id", "direction": "1" }
+                  ]
+                },
+                {
+                  "name": "records_owner_sync_time_id",
+                  "unique": false,
+                  "keys": [
+                    { "name": "_openid", "direction": "1" },
+                    { "name": "syncTime", "direction": "1" },
+                    { "name": "_id", "direction": "1" }
+                  ]
+                },
+                {
+                  "name": "records_owner_record_id",
+                  "unique": false,
+                  "keys": [
+                    { "name": "_openid", "direction": "1" },
+                    { "name": "id", "direction": "1" }
+                  ]
+                },
+                {
+                  "name": "records_owner_restore_batch",
+                  "unique": false,
+                  "keys": [
+                    { "name": "_openid", "direction": "1" },
+                    { "name": "restoreBatchId", "direction": "1" },
+                    { "name": "replacing", "direction": "1" },
+                    { "name": "_id", "direction": "1" }
+                  ]
+                }
+              ]
+            },
+            {
+              "collectionName": "userMeta",
+              "description": "用户同步元数据",
+              "createIndexes": [
+                {
+                  "name": "user_meta_owner_key",
+                  "unique": false,
+                  "keys": [
+                    { "name": "_openid", "direction": "1" },
+                    { "name": "key", "direction": "1" }
+                  ]
+                },
+                {
+                  "name": "user_meta_owner_key_seen",
+                  "unique": false,
+                  "keys": [
+                    { "name": "_openid", "direction": "1" },
+                    { "name": "key", "direction": "1" },
+                    { "name": "lastSeenAt", "direction": "-1" }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

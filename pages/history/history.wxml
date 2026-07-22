@@ -263,7 +263,7 @@
         </view>
       </view>
       <view class="edit-group">
-        <view class="edit-label blue">蓝色框子</view>
+        <view class="edit-label blue">蓝色周转筐</view>
         <view class="edit-row">
           <view class="edit-item">
             <view class="edit-name">发出</view>
@@ -284,7 +284,7 @@
         </view>
       </view>
       <view class="edit-group">
-        <view class="edit-label red">红色框子</view>
+        <view class="edit-label red">红色周转筐</view>
         <view class="edit-row">
           <view class="edit-item">
             <view class="edit-name">发出</view>

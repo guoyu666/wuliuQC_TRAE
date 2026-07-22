@@ -1,5 +1,6 @@
 const cloud = require('wx-server-sdk')
 const config = require('./config.js')
+const recordValidation = require('./recordValidation.js')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const PAGE_SIZE = config.pageSize
 const MIN_CLIENT_PROTOCOL_VERSION = config.minClientProtocolVersion
@@ -353,45 +354,56 @@ async function updateRestoreJob(restoreJobs, restoreJobId, data) {
   }
 }
 
-async function saveDictionaryState(userMeta, openid, routes, plates, routesMeta, platesMeta) {
-  const restoredRoutesMeta = normalizeDictionaryMeta(routesMeta, routes || [])
-  const restoredPlatesMeta = normalizeDictionaryMeta(platesMeta, plates || [])
-  const restoredRoutes = getVisibleNamesFromMeta(restoredRoutesMeta)
-  const restoredPlates = getVisibleNamesFromMeta(restoredPlatesMeta)
-  const existingMeta = await userMeta
-    .where({
+async function saveDictionaryState(db, userMeta, openid, routes, plates, routesMeta, platesMeta, options = {}) {
+  const existing = await userMeta.where({
+    _openid: openid,
+    key: 'dictionary'
+  }).get()
+  const current = existing.data && existing.data[0]
+  const documentId = current && current._id || `dictionary_${hashAccountId(openid)}`
+  const shouldMerge = options.mode === 'merge'
+  const localRoutesMeta = withDeletedNames(normalizeDictionaryMeta(routesMeta, routes || []), options.deletedRoutes || [])
+  const localPlatesMeta = withDeletedNames(normalizeDictionaryMeta(platesMeta, plates || []), options.deletedPlates || [])
+
+  return db.runTransaction(async transaction => {
+    const dictionaryRef = transaction.collection('userMeta').doc(documentId)
+    let currentMeta = null
+    try {
+      const result = await dictionaryRef.get()
+      currentMeta = result && result.data
+    } catch (err) {
+      currentMeta = null
+    }
+
+    const currentRoutesMeta = normalizeDictionaryMeta(currentMeta && currentMeta.routesMeta, currentMeta && currentMeta.routes || [])
+    const currentPlatesMeta = normalizeDictionaryMeta(currentMeta && currentMeta.platesMeta, currentMeta && currentMeta.plates || [])
+    const restoredRoutesMeta = shouldMerge
+      ? mergeDictionaryMeta(currentRoutesMeta, localRoutesMeta)
+      : localRoutesMeta
+    const restoredPlatesMeta = shouldMerge
+      ? mergeDictionaryMeta(currentPlatesMeta, localPlatesMeta)
+      : localPlatesMeta
+    const restoredRoutes = getVisibleNamesFromMeta(restoredRoutesMeta)
+    const restoredPlates = getVisibleNamesFromMeta(restoredPlatesMeta)
+    const metaData = {
       _openid: openid,
-      key: 'dictionary'
-    })
-    .get()
-  const currentMeta = existingMeta.data && existingMeta.data[0]
-  const metaData = {
-    key: 'dictionary',
-    routes: restoredRoutes,
-    plates: restoredPlates,
-    routesMeta: restoredRoutesMeta,
-    platesMeta: restoredPlatesMeta,
-    updatedAt: Date.now(),
-    syncTime: new Date()
-  }
+      key: 'dictionary',
+      routes: restoredRoutes,
+      plates: restoredPlates,
+      routesMeta: restoredRoutesMeta,
+      platesMeta: restoredPlatesMeta,
+      updatedAt: Date.now(),
+      syncTime: new Date()
+    }
 
-  if (currentMeta) {
-    await userMeta.doc(currentMeta._id).update({ data: metaData })
-  } else {
-    await userMeta.add({
-      data: {
-        _openid: openid,
-        ...metaData
-      }
-    })
-  }
-
-  return {
-    routes: restoredRoutes,
-    plates: restoredPlates,
-    routesMeta: restoredRoutesMeta,
-    platesMeta: restoredPlatesMeta
-  }
+    await dictionaryRef.set({ data: metaData })
+    return {
+      routes: restoredRoutes,
+      plates: restoredPlates,
+      routesMeta: restoredRoutesMeta,
+      platesMeta: restoredPlatesMeta
+    }
+  })
 }
 
 async function getUserMetaItem(userMeta, openid, key) {
@@ -932,61 +944,30 @@ exports.main = async (event, context) => {
     if (action === 'syncMeta') {
       const localRoutes = Array.isArray(routes) ? routes.map(item => String(item || '').trim()).filter(Boolean) : []
       const localPlates = Array.isArray(plates) ? plates.map(item => String(item || '').trim()).filter(Boolean) : []
-      const existing = await userMeta
-        .where({
-          _openid: wxContext.OPENID,
-          key: 'dictionary'
-        })
-        .get()
-
-      const current = existing.data && existing.data[0]
-      const shouldReplace = mode === 'replace'
-      const localRouteMeta = withDeletedNames(normalizeDictionaryMeta(routesMeta, localRoutes), deletedRoutes)
-      const localPlateMeta = withDeletedNames(normalizeDictionaryMeta(platesMeta, localPlates), deletedPlates)
-      const currentRouteMeta = normalizeDictionaryMeta(current && current.routesMeta, current && current.routes || [])
-      const currentPlateMeta = normalizeDictionaryMeta(current && current.platesMeta, current && current.plates || [])
-      const mergedRoutesMeta = mergeDictionaryMeta(currentRouteMeta, localRouteMeta, shouldReplace)
-      const mergedPlatesMeta = mergeDictionaryMeta(currentPlateMeta, localPlateMeta, shouldReplace)
-      const mergedRoutes = getVisibleNamesFromMeta(mergedRoutesMeta)
-      const mergedPlates = getVisibleNamesFromMeta(mergedPlatesMeta)
-      const data = {
-        key: 'dictionary',
-        routes: mergedRoutes,
-        plates: mergedPlates,
-        routesMeta: mergedRoutesMeta,
-        platesMeta: mergedPlatesMeta,
-        updatedAt: Date.now(),
-        syncTime: new Date()
-      }
-
-      if (current) {
-        await userMeta.doc(current._id).update({ data })
-      } else {
-        await userMeta.add({
-          data: {
-            _openid: wxContext.OPENID,
-            ...data
-          }
-        })
-      }
-
-      return success({
-        routes: mergedRoutes,
-        plates: mergedPlates,
-        routesMeta: mergedRoutesMeta,
-        platesMeta: mergedPlatesMeta
-      })
+      const dictionary = await saveDictionaryState(
+        db,
+        userMeta,
+        wxContext.OPENID,
+        localRoutes,
+        localPlates,
+        routesMeta,
+        platesMeta,
+        { mode: mode === 'replace' ? 'replace' : 'merge', deletedRoutes, deletedPlates }
+      )
+      return success(dictionary)
     }
 
     if (action === 'upsert') {
-      if (!record || !record.id) {
-        return failure('无效的记录数据')
+      const validation = recordValidation.validateRecord(record, { requireId: true })
+      if (!validation.success) {
+        return failure(validation.message)
       }
+      const incomingRecord = validation.record
 
       const existing = await records
         .where({
           _openid: wxContext.OPENID,
-          id: record.id
+          id: incomingRecord.id
         })
         .get()
       const activeExisting = (existing.data || []).filter(item => {
@@ -998,7 +979,7 @@ exports.main = async (event, context) => {
       const mutation = await commitRecordMutation(
         db,
         wxContext.OPENID,
-        record,
+        incomingRecord,
         activeGeneration,
         target && target._id
       )
@@ -1009,14 +990,19 @@ exports.main = async (event, context) => {
     }
 
     if (action === 'delete') {
-      if (!id) {
+      const recordId = String(id || '').trim()
+      if (!recordId) {
         return failure('无效的记录ID')
+      }
+      const deletedAt = record && record.deletedAt ? Number(record.deletedAt) : Date.now()
+      if (!Number.isFinite(deletedAt) || deletedAt <= 0) {
+        return failure('删除时间无效')
       }
 
       const existing = await records
         .where({
           _openid: wxContext.OPENID,
-          id
+          id: recordId
         })
         .get()
       const activeExisting = (existing.data || []).filter(item => {
@@ -1028,12 +1014,15 @@ exports.main = async (event, context) => {
       let latestRecord = null
 
       for (const item of activeExisting) {
-        const mutation = await commitRecordMutation(db, wxContext.OPENID, {
+        const validation = recordValidation.validateRecord({
           ...item,
-          ...(record || {}),
-          id,
-          deletedAt: (record && record.deletedAt) || Date.now()
-        }, activeGeneration, item._id)
+          id: recordId,
+          deletedAt
+        }, { requireId: true })
+        if (!validation.success) {
+          return failure(validation.message)
+        }
+        const mutation = await commitRecordMutation(db, wxContext.OPENID, validation.record, activeGeneration, item._id)
         if (mutation.skipped) {
           skipped++
           if (!latestRecord || compareRecordVersions(mutation.record, latestRecord) > 0) {
@@ -1067,30 +1056,35 @@ exports.main = async (event, context) => {
         if (!recordId || localRecord.synced !== false) continue
 
         try {
+          const validation = recordValidation.validateRecord(localRecord, { requireId: true })
+          if (!validation.success) {
+            throw new Error(validation.message)
+          }
+          const incomingRecord = validation.record
           const existing = await records.where({
             _openid: wxContext.OPENID,
-            id: recordId
+            id: incomingRecord.id
           }).get()
           const activeExisting = (existing.data || []).filter(item => {
             return (item.generation || LEGACY_GENERATION) === activeGeneration
           }).sort((left, right) => compareRecordVersions(right, left))
 
-          if (localRecord.deletedAt && activeExisting.length === 0) {
+          if (incomingRecord.deletedAt && activeExisting.length === 0) {
             syncedRecords.push({
-              ...localRecord,
+              ...incomingRecord,
               generation: activeGeneration,
               synced: true
             })
             continue
           }
 
-          const targets = localRecord.deletedAt ? activeExisting : [activeExisting[0] || null]
+          const targets = incomingRecord.deletedAt ? activeExisting : [activeExisting[0] || null]
           let latestMutation = null
           for (const target of targets) {
             const mutation = await commitPendingMutation(
               db,
               wxContext.OPENID,
-              localRecord,
+              incomingRecord,
               activeGeneration,
               target && target._id
             )
@@ -1267,7 +1261,16 @@ exports.main = async (event, context) => {
 
       const uploadedRecords = []
       let failed = 0
-      const validRecords = localRecords.filter(localRecord => localRecord.id && !localRecord.deletedAt)
+      const validationResults = localRecords.map(localRecord => recordValidation.validateRecord(localRecord, { requireId: true }))
+      const invalidRecordIds = validationResults
+        .map((validation, index) => !validation.success && String(localRecords[index] && localRecords[index].id || `offset-${index}`))
+        .filter(Boolean)
+      if (invalidRecordIds.length > 0) {
+        return failure('恢复分片包含无效记录', { invalidRecordIds })
+      }
+      const validRecords = validationResults
+        .map(validation => validation.record)
+        .filter(localRecord => !localRecord.deletedAt)
       const takeRevision = await reserveServerRevisions(db, wxContext.OPENID, validRecords.length)
       const stagedRecords = await fetchRestoreRecords(records, wxContext.OPENID, restoreBatchId)
       const stagedByRecordId = new Map()
@@ -1278,10 +1281,7 @@ exports.main = async (event, context) => {
         stagedByRecordId.set(record.id, existing)
       })
 
-      for (const localRecord of localRecords) {
-        if (!localRecord.id || localRecord.deletedAt) {
-          continue
-        }
+      for (const localRecord of validRecords) {
 
         try {
           const serverRevision = takeRevision()
@@ -1411,7 +1411,16 @@ exports.main = async (event, context) => {
       await commitActiveGeneration(db, wxContext.OPENID, restoreBatchId, previousGeneration)
 
       try {
-        restoredMeta = await saveDictionaryState(userMeta, wxContext.OPENID, routes, plates, routesMeta, platesMeta)
+        restoredMeta = await saveDictionaryState(
+          db,
+          userMeta,
+          wxContext.OPENID,
+          routes,
+          plates,
+          routesMeta,
+          platesMeta,
+          { mode: 'replace' }
+        )
       } catch (err) {
         dictionarySyncPending = true
         console.error('恢复记录已生效，字典状态等待重试', err)

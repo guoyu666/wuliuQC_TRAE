@@ -84,7 +84,7 @@
             <view class="bar blue-out" style="height: {{barBlueOut}}rpx;"></view>
             <view class="bar blue-in" style="height: {{barBlueIn}}rpx;"></view>
           </view>
-          <view class="bar-label">蓝色框子</view>
+          <view class="bar-label">蓝色周转筐</view>
           <view class="bar-value">出:{{totalBlueOut}} 入:{{totalBlueIn}}</view>
         </view>
         <view class="chart-bar-item">
@@ -92,7 +92,7 @@
             <view class="bar red-out" style="height: {{barRedOut}}rpx;"></view>
             <view class="bar red-in" style="height: {{barRedIn}}rpx;"></view>
           </view>
-          <view class="bar-label">红色框子</view>
+          <view class="bar-label">红色周转筐</view>
           <view class="bar-value">出:{{totalRedOut}} 入:{{totalRedIn}}</view>
         </view>
       </view>

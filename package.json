@@ -1,0 +1,8 @@
+{
+  "name": "turnover-basket-records",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "check": "node --check utils/db.js && node --check cloudfunctions/syncRecords/index.js"
+  }
+}
